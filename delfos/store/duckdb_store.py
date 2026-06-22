@@ -260,10 +260,20 @@ class DuckDBGraphStore(GraphStore):
     # --- checkpoint manifest ----------------------------------------------
 
     def record_indexed_file(self, file_path: str, git_sha: str, indexed_at: datetime) -> None:
-        raise NotImplementedError
+        self._con.execute(
+            "INSERT OR REPLACE INTO indexed_files "
+            "(file_path, git_sha, indexed_at) VALUES (?, ?, ?)",
+            [file_path, git_sha, indexed_at],
+        )
 
     def indexed_file_sha(self, file_path: str) -> str | None:
-        raise NotImplementedError
+        row = self._con.execute(
+            "SELECT git_sha FROM indexed_files WHERE file_path = ?", [file_path]
+        ).fetchone()
+        return None if row is None else str(row[0])
 
     def list_indexed_files(self) -> list[IndexedFile]:
-        raise NotImplementedError
+        rows = self._con.execute(
+            "SELECT file_path, git_sha, indexed_at FROM indexed_files"
+        ).fetchall()
+        return [IndexedFile(file_path=str(r[0]), git_sha=str(r[1]), indexed_at=r[2]) for r in rows]

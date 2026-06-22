@@ -19,6 +19,7 @@ from delfos.schema import (
     TagCategory,
     TagNode,
 )
+from delfos.store.base import IndexedFile
 from delfos.store.duckdb_store import DuckDBGraphStore
 
 EMBEDDING_DIM = 8
@@ -268,3 +269,23 @@ def test_vector_search_skips_null_embeddings(store: DuckDBGraphStore) -> None:
     store.upsert_node(make_cue("cue-1", embedding=_unit(0)))
     results = store.vector_search(_unit(0), k=5)
     assert [r.node_id for r in results] == ["cue-1"]
+
+
+def test_manifest_record_and_read_sha(store: DuckDBGraphStore) -> None:
+    store.record_indexed_file("a.py", "sha1", NOW)
+    assert store.indexed_file_sha("a.py") == "sha1"
+    assert store.indexed_file_sha("missing.py") is None
+
+
+def test_manifest_record_replaces_sha(store: DuckDBGraphStore) -> None:
+    store.record_indexed_file("a.py", "sha1", NOW)
+    store.record_indexed_file("a.py", "sha2", NOW)
+    assert store.indexed_file_sha("a.py") == "sha2"
+
+
+def test_manifest_list(store: DuckDBGraphStore) -> None:
+    store.record_indexed_file("a.py", "sha1", NOW)
+    store.record_indexed_file("b.py", "sha2", NOW)
+    listed = store.list_indexed_files()
+    assert {f.file_path for f in listed} == {"a.py", "b.py"}
+    assert all(isinstance(f, IndexedFile) for f in listed)
