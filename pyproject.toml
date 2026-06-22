@@ -30,6 +30,7 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pyright]
-include = ["src"]
+include = ["."]
+exclude = [".venv"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
