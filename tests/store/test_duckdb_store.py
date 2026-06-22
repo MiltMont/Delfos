@@ -184,3 +184,51 @@ def test_upsert_edge_replaces(store: DuckDBGraphStore) -> None:
     store.upsert_edge(_edge("cue-1", "content-1"))  # same triple
     count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
     assert count is not None and count[0] == 1
+
+
+def test_delete_node_removes_node_and_incident_edges(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_cue("cue-1"))
+    store.upsert_node(make_content("content-1"))
+    store.upsert_edge(_edge("cue-1", "content-1"))
+    store.delete_node("cue-1")
+    assert store.get_node("cue-1") is None
+    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    assert edge_count is not None and edge_count[0] == 0
+
+
+def test_delete_nodes_for_file_removes_nodes_and_edges(store: DuckDBGraphStore) -> None:
+    # Two nodes from a.py, one cross-file REDIRECTS_TO edge into a.py from b.py.
+    store.upsert_node(make_cue("cue-1"))  # source_file a.py
+    store.upsert_node(make_content("content-1"))  # source_file a.py
+    keep = make_tag("tag-keep")
+    keep_in_b = keep.model_copy(update={"source_file": "b.py"})
+    store.upsert_node(keep_in_b)
+    store.upsert_edge(_edge("cue-1", "content-1"))  # file-scoped, a.py
+    cross = Edge(
+        source_id="tag-keep",
+        target_id="cue-1",
+        edge_type=EdgeType.REDIRECTS_TO,
+        source_file="b.py",
+    )
+    store.upsert_edge(cross)  # provenance b.py but touches a node in a.py
+
+    store.delete_nodes_for_file("a.py")
+
+    assert store.get_node("cue-1") is None
+    assert store.get_node("content-1") is None
+    assert store.get_node("tag-keep") is not None  # b.py node survives
+    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    assert edge_count is not None and edge_count[0] == 0  # both edges gone
+
+
+def test_delete_nodes_for_file_clears_null_provenance_edge(store: DuckDBGraphStore) -> None:
+    # An edge with source_file=None is removed via the source_id/target_id
+    # fallback, not the source_file clause.
+    store.upsert_node(make_cue("cue-1"))
+    store.upsert_node(make_content("content-1"))
+    store.upsert_edge(
+        Edge(source_id="cue-1", target_id="content-1", edge_type=EdgeType.CUE_OF)
+    )  # source_file defaults to None
+    store.delete_nodes_for_file("a.py")
+    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    assert edge_count is not None and edge_count[0] == 0

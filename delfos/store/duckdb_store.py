@@ -185,10 +185,23 @@ class DuckDBGraphStore(GraphStore):
         )
 
     def delete_node(self, node_id: str) -> None:
-        raise NotImplementedError
+        self._con.execute(
+            "DELETE FROM edges WHERE source_id = ? OR target_id = ?",
+            [node_id, node_id],
+        )
+        self._con.execute("DELETE FROM nodes WHERE id = ?", [node_id])
 
     def delete_nodes_for_file(self, source_file: str) -> None:
-        raise NotImplementedError
+        self._con.execute(
+            """
+            DELETE FROM edges
+            WHERE source_file = ?
+               OR source_id IN (SELECT id FROM nodes WHERE source_file = ?)
+               OR target_id IN (SELECT id FROM nodes WHERE source_file = ?)
+            """,
+            [source_file, source_file, source_file],
+        )
+        self._con.execute("DELETE FROM nodes WHERE source_file = ?", [source_file])
 
     # --- reads -------------------------------------------------------------
 
