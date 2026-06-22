@@ -23,7 +23,7 @@ The project is early-stage. What currently exists is the schema and storage abst
 
 ### Two layers, one boundary
 
-Everything goes through `GraphStore` (`src/delfos/store/base.py`). No component (indexer, MCP tools, future CLI) should ever touch DuckDB directly. `DuckDBGraphStore` is the only concrete backend; its methods currently all raise `NotImplementedError`.
+Everything goes through `GraphStore` (`delfos/store/base.py`). No component (indexer, MCP tools, future CLI) should ever touch DuckDB directly. `DuckDBGraphStore` is the only concrete backend; its methods currently all raise `NotImplementedError`.
 
 ### The graph: Cue → Tag → Content
 
@@ -58,7 +58,7 @@ The indexer's atomic unit is **one file per transaction**. An `indexed_files` ta
 
 Every vector must carry `embedding_model` (and optionally `embedding_model_version`). A `DuckDBGraphStore` instance is configured with a single `embedding_model` at construction, and writes are rejected when the node's model disagrees. This is enforced from day one to make future re-embedding migrations feasible. The `EmbeddedMixin` validator (`nodes.py`) enforces `embedding_model` is present whenever `embedding` is set.
 
-## Key Decisions (see `decisions.md`)
+## Key Decisions (see `docs/decisions.md`)
 
 - `reconstruct` uses **depth-first sequential** traversal, not parallel breadth (per Figure 9 of the paper)
 - No symbol-level diffing, tombstones, or rename detection in v1 — revisit before any production use
