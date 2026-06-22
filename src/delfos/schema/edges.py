@@ -12,9 +12,16 @@ from .enums import EdgeType
 class Edge(BaseModel):
     """A directed, typed relationship from ``source_id`` to ``target_id``.
 
-    Edges carry the same provenance as nodes so they can be dropped alongside
-    the nodes of a re-indexed file. ``REDIRECTS_TO`` edges encode renames and
-    must be followed transparently during traversal.
+    Provenance (``source_file`` / ``git_sha`` / ``indexed_at``) is optional,
+    unlike on :class:`~delfos.schema.nodes.BaseNode` where it is required. Most
+    edges are file-scoped (``CUE_OF``, ``TAGGED_WITH``, ``PART_OF_TOPIC``) and
+    are removed implicitly when their incident nodes are dropped during a
+    re-index, so they do not strictly need their own provenance. Edges that span
+    files or commits — chiefly ``REDIRECTS_TO``, which encodes a rename and must
+    be followed transparently during traversal — cannot be attributed to a
+    single source file, which is why these fields are nullable. When an edge is
+    file-scoped, the indexer should still stamp its provenance so
+    ``delete_nodes_for_file`` can clean it up directly.
     """
 
     model_config = ConfigDict(extra="forbid")
