@@ -30,10 +30,11 @@ Why MCP: clean separation, language-agnostic, works across agents you don't own.
 ---
 Architecture Decisions
 
-Database: SQLite + sqlite-vec
+Database: DuckDB
 
 - Single embedded file, zero-dependency deployment
-- sqlite-vec for ANN vector search on cue nodes
+- DuckDB VSS extension (HNSW) for ANN vector search on cue nodes
+- Relational tables in the same file hold nodes, edges, and the checkpoint manifest
 - Sufficient for local prototype; no separate process required
 
 Language: Python
@@ -45,7 +46,7 @@ Concurrency: shared DB + single writer
 
 - One indexer process owns all writes (triggered by git commits or file watcher)
 - All agent sessions are read-only consumers
-- SQLite WAL mode gives concurrent reads while writer is active
+- DuckDB single-writer model: one read-write connection indexes while readers attach the file read-only
 - No copy-per-agent (consistency nightmare)
 
 Codebase change tracking: git-diff based
