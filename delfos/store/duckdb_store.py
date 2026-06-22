@@ -146,13 +146,18 @@ class DuckDBGraphStore(GraphStore):
     # --- transactions ------------------------------------------------------
 
     def begin_transaction(self) -> None:
-        raise NotImplementedError
+        if self._in_txn:
+            raise RuntimeError("transaction already open; nesting is not supported")
+        self._con.execute("BEGIN TRANSACTION")
+        self._in_txn = True
 
     def commit(self) -> None:
-        raise NotImplementedError
+        self._con.execute("COMMIT")
+        self._in_txn = False
 
     def rollback(self) -> None:
-        raise NotImplementedError
+        self._con.execute("ROLLBACK")
+        self._in_txn = False
 
     # --- node / edge writes ------------------------------------------------
 

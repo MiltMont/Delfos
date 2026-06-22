@@ -289,3 +289,54 @@ def test_manifest_list(store: DuckDBGraphStore) -> None:
     listed = store.list_indexed_files()
     assert {f.file_path for f in listed} == {"a.py", "b.py"}
     assert all(isinstance(f, IndexedFile) for f in listed)
+
+
+def test_commit_persists(store: DuckDBGraphStore) -> None:
+    with store.transaction():
+        store.upsert_node(make_cue("cue-1"))
+    assert store.get_node("cue-1") is not None
+
+
+def test_rollback_discards(store: DuckDBGraphStore) -> None:
+    try:
+        with store.transaction():
+            store.upsert_node(make_cue("cue-1"))
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    assert store.get_node("cue-1") is None
+
+
+def test_nested_transaction_raises(store: DuckDBGraphStore) -> None:
+    store.begin_transaction()
+    with pytest.raises(RuntimeError, match="transaction already open"):
+        store.begin_transaction()
+    store.rollback()
+
+
+def test_committed_state_survives_reopen(tmp_path: Path) -> None:
+    path = tmp_path / "persist.duckdb"
+    s1 = DuckDBGraphStore(path, embedding_dim=EMBEDDING_DIM, embedding_model=EMBEDDING_MODEL)
+    s1.initialize()
+    with s1.transaction():
+        s1.upsert_node(make_cue("cue-1"))
+    s1.close()
+
+    s2 = DuckDBGraphStore(path, embedding_dim=EMBEDDING_DIM, embedding_model=EMBEDDING_MODEL)
+    s2.initialize()
+    assert s2.get_node("cue-1") is not None
+    s2.close()
+
+
+def test_uncommitted_state_lost_on_reopen(tmp_path: Path) -> None:
+    path = tmp_path / "crash.duckdb"
+    s1 = DuckDBGraphStore(path, embedding_dim=EMBEDDING_DIM, embedding_model=EMBEDDING_MODEL)
+    s1.initialize()
+    s1.begin_transaction()
+    s1.upsert_node(make_cue("cue-1"))
+    s1.close()  # die mid-file: never committed
+
+    s2 = DuckDBGraphStore(path, embedding_dim=EMBEDDING_DIM, embedding_model=EMBEDDING_MODEL)
+    s2.initialize()
+    assert s2.get_node("cue-1") is None
+    s2.close()
