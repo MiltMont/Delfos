@@ -11,6 +11,9 @@ from delfos.schema import (
     ContentNode,
     CueNode,
     CueType,
+    Direction,
+    Edge,
+    EdgeType,
     MemoryLayer,
     TagCategory,
     TagNode,
@@ -142,3 +145,42 @@ def test_upsert_rejects_wrong_embedding_dim(store: DuckDBGraphStore) -> None:
     bad = make_cue(embedding=[0.1, 0.2, 0.3])  # dim 3, store expects 8
     with pytest.raises(ValueError, match="!= store dim"):
         store.upsert_node(bad)
+
+
+def _edge(src: str, tgt: str, etype: EdgeType = EdgeType.CUE_OF) -> Edge:
+    return Edge(source_id=src, target_id=tgt, edge_type=etype, source_file="a.py")
+
+
+def test_neighbors_outgoing(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_cue("cue-1"))
+    store.upsert_node(make_content("content-1"))
+    store.upsert_edge(_edge("cue-1", "content-1"))
+    result = store.neighbors("cue-1", direction=Direction.OUTGOING)
+    assert [n.id for n in result] == ["content-1"]
+
+
+def test_neighbors_incoming(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_cue("cue-1"))
+    store.upsert_node(make_content("content-1"))
+    store.upsert_edge(_edge("cue-1", "content-1"))
+    result = store.neighbors("content-1", direction=Direction.INCOMING)
+    assert [n.id for n in result] == ["cue-1"]
+
+
+def test_neighbors_filters_by_edge_type(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_cue("cue-1"))
+    store.upsert_node(make_content("content-1"))
+    store.upsert_node(make_tag("tag-1"))
+    store.upsert_edge(_edge("cue-1", "content-1", EdgeType.CUE_OF))
+    store.upsert_edge(_edge("cue-1", "tag-1", EdgeType.TAGGED_WITH))
+    result = store.neighbors("cue-1", edge_type=EdgeType.TAGGED_WITH)
+    assert [n.id for n in result] == ["tag-1"]
+
+
+def test_upsert_edge_replaces(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_cue("cue-1"))
+    store.upsert_node(make_content("content-1"))
+    store.upsert_edge(_edge("cue-1", "content-1"))
+    store.upsert_edge(_edge("cue-1", "content-1"))  # same triple
+    count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    assert count is not None and count[0] == 1

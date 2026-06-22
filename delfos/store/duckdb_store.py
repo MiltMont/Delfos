@@ -53,6 +53,11 @@ def _node_params(node: Node) -> list[object]:
     return [data.get(col) for col in _NODE_COLUMNS]
 
 
+def _edge_params(edge: Edge) -> list[object]:
+    data = edge.model_dump()
+    return [data.get(col) for col in _EDGE_COLUMNS]
+
+
 def _row_to_node(row: tuple[object, ...]) -> Node:
     raw = dict(zip(_NODE_COLUMNS, row, strict=True))
     # extra="forbid" on the models: keep only populated columns so a row for
@@ -172,7 +177,12 @@ class DuckDBGraphStore(GraphStore):
         )
 
     def upsert_edge(self, edge: Edge) -> None:
-        raise NotImplementedError
+        cols = ", ".join(_EDGE_COLUMNS)
+        placeholders = ", ".join(["?"] * len(_EDGE_COLUMNS))
+        self._con.execute(
+            f"INSERT OR REPLACE INTO edges ({cols}) VALUES ({placeholders})",
+            _edge_params(edge),
+        )
 
     def delete_node(self, node_id: str) -> None:
         raise NotImplementedError
@@ -196,7 +206,22 @@ class DuckDBGraphStore(GraphStore):
         edge_type: EdgeType | None = None,
         direction: Direction = Direction.OUTGOING,
     ) -> list[Node]:
-        raise NotImplementedError
+        if direction == Direction.OUTGOING:
+            match_col, return_col = "source_id", "target_id"
+        else:
+            match_col, return_col = "target_id", "source_id"
+        n_cols = ", ".join(f"n.{c}" for c in _NODE_COLUMNS)
+        sql = (
+            f"SELECT {n_cols} FROM edges e "
+            f"JOIN nodes n ON n.id = e.{return_col} "
+            f"WHERE e.{match_col} = ?"
+        )
+        params: list[object] = [node_id]
+        if edge_type is not None:
+            sql += " AND e.edge_type = ?"
+            params.append(edge_type)
+        rows = self._con.execute(sql, params).fetchall()
+        return [_row_to_node(row) for row in rows]
 
     def vector_search(
         self,
