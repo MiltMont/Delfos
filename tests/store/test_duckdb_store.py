@@ -121,3 +121,24 @@ def test_upsert_node_replaces(store: DuckDBGraphStore) -> None:
     updated = make_cue(embedding=vec(0.9))
     store.upsert_node(updated)
     assert store.get_node("cue-1") == updated
+
+
+def test_upsert_rejects_wrong_embedding_model(store: DuckDBGraphStore) -> None:
+    bad = CueNode(
+        id="cue-x",
+        source_file="a.py",
+        git_sha="sha1",
+        indexed_at=NOW,
+        cue_type=CueType.SYMBOL,
+        text="x",
+        embedding=vec(0.1),
+        embedding_model="other-model",
+    )
+    with pytest.raises(ValueError, match="does not match store model"):
+        store.upsert_node(bad)
+
+
+def test_upsert_rejects_wrong_embedding_dim(store: DuckDBGraphStore) -> None:
+    bad = make_cue(embedding=[0.1, 0.2, 0.3])  # dim 3, store expects 8
+    with pytest.raises(ValueError, match="!= store dim"):
+        store.upsert_node(bad)
