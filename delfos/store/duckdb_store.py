@@ -197,6 +197,9 @@ class DuckDBGraphStore(GraphStore):
         self._con.execute("DELETE FROM nodes WHERE id = ?", [node_id])
 
     def delete_nodes_for_file(self, source_file: str) -> None:
+        # Deliberately NOT wrapped in its own transaction: the indexer composes
+        # this delete with the subsequent re-insert inside one transaction() so a
+        # file re-index is atomic. Self-wrapping would break that composition.
         self._con.execute(
             """
             DELETE FROM edges

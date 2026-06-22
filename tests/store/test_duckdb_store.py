@@ -44,7 +44,7 @@ def test_initialize_is_idempotent(store: DuckDBGraphStore) -> None:
     store.initialize()
     tables = {
         row[0]
-        for row in store._con.execute(  # type: ignore[reportPrivateUsage]
+        for row in store._con.execute(  # pyright: ignore[reportPrivateUsage]
             "SELECT table_name FROM information_schema.tables"
         ).fetchall()
     }
@@ -184,7 +184,7 @@ def test_upsert_edge_replaces(store: DuckDBGraphStore) -> None:
     store.upsert_node(make_content("content-1"))
     store.upsert_edge(_edge("cue-1", "content-1"))
     store.upsert_edge(_edge("cue-1", "content-1"))  # same triple
-    count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # pyright: ignore[reportPrivateUsage]
     assert count is not None and count[0] == 1
 
 
@@ -194,7 +194,8 @@ def test_delete_node_removes_node_and_incident_edges(store: DuckDBGraphStore) ->
     store.upsert_edge(_edge("cue-1", "content-1"))
     store.delete_node("cue-1")
     assert store.get_node("cue-1") is None
-    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    assert store.get_node("content-1") is not None  # non-target node survives
+    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # pyright: ignore[reportPrivateUsage]
     assert edge_count is not None and edge_count[0] == 0
 
 
@@ -219,7 +220,7 @@ def test_delete_nodes_for_file_removes_nodes_and_edges(store: DuckDBGraphStore) 
     assert store.get_node("cue-1") is None
     assert store.get_node("content-1") is None
     assert store.get_node("tag-keep") is not None  # b.py node survives
-    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # pyright: ignore[reportPrivateUsage]
     assert edge_count is not None and edge_count[0] == 0  # both edges gone
 
 
@@ -232,7 +233,7 @@ def test_delete_nodes_for_file_clears_null_provenance_edge(store: DuckDBGraphSto
         Edge(source_id="cue-1", target_id="content-1", edge_type=EdgeType.CUE_OF)
     )  # source_file defaults to None
     store.delete_nodes_for_file("a.py")
-    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
+    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # pyright: ignore[reportPrivateUsage]
     assert edge_count is not None and edge_count[0] == 0
 
 
