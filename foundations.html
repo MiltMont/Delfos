@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Foundations — MRAgent</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #161b27;
+      --border: #1e2535;
+      --accent: #4f8ef7;
+      --accent-dim: #1e2f50;
+      --text: #d4daf0;
+      --text-dim: #6b7799;
+      --text-muted: #404869;
+      --green: #3ecf8e;
+      --yellow: #f0c060;
+      --red: #f07070;
+      --mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.7;
+      padding: 48px 24px 96px;
+    }
+
+    .page {
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 32px;
+      margin-bottom: 48px;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #eef1ff;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 15px;
+      max-width: 560px;
+    }
+
+    /* Dependency chain */
+    .dep-chain {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px 32px;
+      margin-bottom: 56px;
+    }
+
+    .dep-chain h2 {
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+    }
+
+    .dep-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .dep-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .dep-connector {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 28px;
+      padding-top: 2px;
+    }
+
+    .dep-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .dep-arrow {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+      margin: 2px 0;
+    }
+
+    .dep-text {
+      padding-top: 4px;
+      padding-bottom: 6px;
+    }
+
+    .dep-text strong {
+      color: #eef1ff;
+      font-size: 14px;
+    }
+
+    .dep-note {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Sections */
+    .section {
+      margin-bottom: 52px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 28px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .section-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: #eef1ff;
+      letter-spacing: -0.01em;
+    }
+
+    .section-body {
+      padding: 28px;
+    }
+
+    .why-block {
+      background: var(--accent-dim);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 6px 6px 0;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      font-size: 14px;
+      color: #b0c0f0;
+    }
+
+    .why-block strong {
+      color: var(--accent);
+    }
+
+    .decisions-label {
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    .decision-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .decision-list li {
+      display: flex;
+      gap: 14px;
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .decision-list li::before {
+      content: "–";
+      color: var(--text-muted);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .decision-list li strong {
+      color: #eef1ff;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      background: #1a2035;
+      color: #a0c0ff;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    .output-block {
+      background: #0b1020;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 14px 18px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .output-block strong {
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    /* Memory layer sub-list */
+    .layer-list {
+      list-style: none;
+      margin: 8px 0 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .layer-list li {
+      display: flex;
+      gap: 10px;
+      font-size: 13.5px;
+      color: var(--text-dim);
+    }
+
+    .layer-pill {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 1px 8px;
+      border-radius: 20px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .pill-episodic  { background: #2a1a40; color: #c080ff; border: 1px solid #5030a0; }
+    .pill-semantic  { background: #1a2f20; color: #60d090; border: 1px solid #306050; }
+    .pill-topic     { background: #2f2010; color: #f0a040; border: 1px solid #905020; }
+
+    /* Closing note */
+    .closing {
+      margin-top: 56px;
+      padding: 24px 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+
+    .closing strong {
+      color: var(--yellow);
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow">MRAgent &nbsp;/&nbsp; Architecture Review</p>
+    <h1>Foundations</h1>
+    <p class="subtitle">The decisions that are blocking — things that cannot be deferred without forcing a rewrite later. Ordered by dependency: each item depends on the ones before it being settled first.</p>
+  </header>
+
+  <!-- Dependency chain summary -->
+  <div class="dep-chain">
+    <h2>Dependency order</h2>
+    <ul class="dep-list">
+
+      <li class="dep-item">
+        <div class="dep-connector">
+          <div class="dep-num">1</div>
+          <div class="dep-arrow"></div>
+        </div>
+        <div class="dep-text">
+          <strong>Cue–Tag–Content schema for code</strong>
+          <div class="dep-note">Everything else is a direct expression of this</div>
+        </div>
+      </li>
+
+      <li class="dep-item">
+        <div class="dep-connector">
+          <div class="dep-num">2</div>
+          <div class="dep-arrow"></div>
+        </div>
+        <div class="dep-text">
+          <strong>GraphStore abstract interface</strong>
+          <div class="dep-note">Shape determined by schema; no component touches DB directly</div>
+        </div>
+      </li>
+
+      <li class="dep-item">
+        <div class="dep-connector">
+          <div class="dep-num">3</div>
+          <div class="dep-arrow"></div>
+        </div>
+        <div class="dep-text">
+          <strong>reconstruct() tool contract + primitive signatures</strong>
+          <div class="dep-note">Primary agent-facing API; primitive tools fall out of this</div>
+        </div>
+      </li>
+
+      <li class="dep-item">
+        <div class="dep-connector">
+          <div class="dep-num">4</div>
+          <div class="dep-arrow"></div>
+        </div>
+        <div class="dep-text">
+          <strong>Stale-handling strategy</strong>
+          <div class="dep-note">Depends on schema fields from (1) — indexer must merge, not replace</div>
+        </div>
+      </li>
+
+      <li class="dep-item">
+        <div class="dep-connector">
+          <div class="dep-num">5</div>
+          <div class="dep-arrow"></div>
+        </div>
+        <div class="dep-text">
+          <strong>Embedding model versioning</strong>
+          <div class="dep-note">Depends on schema fields from (1) — must be in every embedding node</div>
+        </div>
+      </li>
+
+      <li class="dep-item">
+        <div class="dep-connector">
+          <div class="dep-num">6</div>
+        </div>
+        <div class="dep-text">
+          <strong>Indexer atomicity</strong>
+          <div class="dep-note">Depends on transaction model from (2)</div>
+        </div>
+      </li>
+
+    </ul>
+  </div>
+
+  <!-- Section 1 -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <div class="section-title">Code-specific Cue–Tag–Content schema</div>
+    </div>
+    <div class="section-body">
+      <div class="why-block">
+        <strong>Why it comes first.</strong> Every other component depends on this. The DB schema, the indexer pipeline, the reconstruction algorithm, and the tool return types are all direct expressions of this schema. Building any of them without a settled schema means rebuilding them when it changes.
+      </div>
+
+      <p class="decisions-label">What must be decided</p>
+      <ul class="decision-list">
+        <li>
+          <span><strong>Cues:</strong> What constitutes a valid cue for code? Candidates: function names, class names, error message strings, concept phrases extracted by LLM ("rate limiting", "token refresh"). How are cues generated — purely from AST, from LLM extraction, or both? Are cues typed (symbol-cue vs concept-cue)?</span>
+        </li>
+        <li>
+          <span><strong>Tags:</strong> What are the valid tag categories? Proposed set: <code>module_path</code>, <code>arch_layer</code> (api / service / data / infra), <code>pattern_type</code> (factory, middleware, singleton), <code>lang_construct</code> (decorator, context_manager, generic), <code>language</code>. Free-form strings or closed enum? Assigned by heuristic rules, AST analysis, or LLM labeling?</span>
+        </li>
+        <li>
+          <span><strong>Content:</strong> What goes in a content node? Minimum: function/class body + signature + docstring. Extended: git commit messages that touched the symbol, associated test cases. Which are required at indexing time vs. lazily enriched?</span>
+        </li>
+        <li>
+          <span><strong>Memory layers:</strong> What node types map to each layer?</span>
+        </li>
+      </ul>
+
+      <ul class="layer-list" style="margin-bottom: 16px; margin-left: 28px;">
+        <li>
+          <span class="layer-pill pill-episodic">Episodic</span>
+          Commits, PRs, code-change events. Granularity: per-file, per-symbol, or per-commit?
+        </li>
+        <li>
+          <span class="layer-pill pill-semantic">Semantic</span>
+          Exported API surface — interfaces, types, constants. How is "exported" defined across languages? How is semantic kept distinct from episodic for the same symbol?
+        </li>
+        <li>
+          <span class="layer-pill pill-topic">Topic</span>
+          Modules and packages as architectural clusters. Cluster membership by directory structure, explicit annotation, or LLM clustering?
+        </li>
+      </ul>
+
+      <ul class="decision-list">
+        <li>
+          <span><strong>Edge types:</strong> Minimum: <code>CUE_OF</code>, <code>TAGGED_WITH</code>, <code>PART_OF_TOPIC</code>, <code>REDIRECTS_TO</code> (for renames). Are edges typed and directional? Can a cue belong to multiple content nodes?</span>
+        </li>
+      </ul>
+
+      <div class="output-block">
+        <strong>Output</strong>
+        A graph schema document with node types, required properties per type, edge types, and at least two worked examples (one function, one module) showing the full subgraph that would be created.
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 2 -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <div class="section-title">Database abstraction interface</div>
+    </div>
+    <div class="section-body">
+      <div class="why-block">
+        <strong>Why it comes second.</strong> The tiered backend decision (SQLite + sqlite-vec for local, Neo4j for teams) means no component should ever call a database directly. The interface must be defined before the indexer or tools are implemented. Its shape is fully determined by the schema from step 1.
+      </div>
+
+      <p class="decisions-label">What must be decided</p>
+      <ul class="decision-list">
+        <li>
+          <span><strong>Interface boundaries:</strong> What primitive operations must the interface expose? Candidates: <code>upsert_node</code>, <code>upsert_edge</code>, <code>vector_search(embedding, k)</code>, <code>neighbors(node_id, edge_type, direction)</code>, <code>get_node(id)</code>, <code>delete_node(id)</code>, <code>begin_transaction / commit / rollback</code>. Are transactions first-class in the interface?</span>
+        </li>
+        <li>
+          <span><strong>Vector search contract:</strong> Both SQLite-vec and Neo4j support ANN search with different guarantees. Does the interface promise exact k-NN or approximate? Return type: node_id + score, or full node?</span>
+        </li>
+        <li>
+          <span><strong>Backend selection:</strong> Config file, environment variable, or URL scheme (<code>neo4j://</code> vs <code>sqlite://</code>)? Is the backend swappable at runtime or fixed at startup?</span>
+        </li>
+        <li>
+          <span><strong>SQLite-vec vs DuckDB:</strong> SQLite-vec is simpler to embed; DuckDB has a richer query language and handles larger graphs. This choice must be made now — the two have different transaction models.</span>
+        </li>
+        <li>
+          <span><strong>Migration path:</strong> When a user moves from SQLite to Neo4j, what is the upgrade path? Does the interface include an <code>export / import</code> operation, or is re-indexing from scratch acceptable?</span>
+        </li>
+      </ul>
+
+      <div class="output-block">
+        <strong>Output</strong>
+        A Python abstract base class (<code>GraphStore</code>) with all method signatures, return types, and documented contracts. Both backend stubs written as skeleton classes satisfying the interface — no implementation yet.
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 3 -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">3</div>
+      <div class="section-title">reconstruct(query, budget) tool contract</div>
+    </div>
+    <div class="section-body">
+      <div class="why-block">
+        <strong>Why it comes third.</strong> This is the primary interface between the MCP server and any consuming agent. The reconstruction algorithm, the tool's return type, and the trace format must all be specified before the server is built. The primitive tools (<code>search</code>, <code>traverse_forward</code>, <code>traverse_reverse</code>) are defined as a byproduct of this step.
+      </div>
+
+      <p class="decisions-label">What must be decided</p>
+      <ul class="decision-list">
+        <li>
+          <span><strong>Budget definition:</strong> What does <code>budget</code> control — number of traversal steps, total nodes visited, wall-clock time, or a combination? Sensible default? What happens when budget is exhausted — return partial results or error?</span>
+        </li>
+        <li>
+          <span><strong>Traversal policy:</strong> The paper (Figure 9) shows sequential depth outperforms parallel breadth. Default order: depth-first, best-first by score, or iterative deepening? How does the algorithm decide when to switch from forward to reverse traversal?</span>
+        </li>
+        <li>
+          <span><strong>Evidence set format:</strong> What does <code>reconstruct</code> return to the agent? Candidates: a list of content nodes with scores, a structured object with episodic/semantic/topic sections, a flat markdown summary. This directly determines how useful the tool is to an agent with no knowledge of the graph.</span>
+        </li>
+        <li>
+          <span><strong>Reconstruction trace:</strong> Every call should log its traversal path. Structure: a list of <code>(step, node_id, edge_type, score)</code> tuples? Written to: log file, in-memory ring buffer, DB table? Included in the tool response (verbose mode) or only accessible via <code>mragent inspect</code>?</span>
+        </li>
+        <li>
+          <span><strong>Primitive tool contracts:</strong> <code>search(query) → List[CueNode]</code>, <code>traverse_forward(cues, tags) → List[ContentNode]</code>, <code>traverse_reverse(content_ids) → List[CueNode]</code>. Return types must be consistent with what <code>reconstruct</code> uses internally.</span>
+        </li>
+      </ul>
+
+      <div class="output-block">
+        <strong>Output</strong>
+        A tool contract document with function signatures, argument types, return types, error conditions, and a worked example showing a full <code>reconstruct</code> call trace for a concrete query against a hypothetical codebase.
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 4 -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <div class="section-title">Stale-handling strategy</div>
+    </div>
+    <div class="section-body">
+      <div class="why-block">
+        <strong>Why it comes fourth.</strong> The indexer is the write path. Writing it without a stale-handling strategy produces code that must be replaced entirely when stale content accumulates. The decisions here affect both the graph schema and the indexer logic. A codebase used for 6 months will have a graph full of ghosts if this is left unaddressed — and reconstruction quality degrades silently.
+      </div>
+
+      <p class="decisions-label">What must be decided</p>
+      <ul class="decision-list">
+        <li>
+          <span><strong>Node stamping:</strong> Every node must carry <code>git_sha</code> (the commit SHA at last index) and <code>indexed_at</code> (timestamp). These fields must be added to the schema from step 1 if not already present.</span>
+        </li>
+        <li>
+          <span><strong>Symbol-level diffing:</strong> When a file changes, diff at the symbol level — not the file level. Old AST vs new AST; classify each symbol as: unchanged, modified, added, or deleted. Source of the "old AST": stored in the DB, re-parsed from git history, or diffed from git's object store?</span>
+        </li>
+        <li>
+          <span><strong>Deleted symbols:</strong> A deleted function becomes a tombstone node with <code>status: deleted</code>, retaining its cues and edges. Metadata on tombstone: last known content, commit that deleted it, <code>deleted_at</code> timestamp.</span>
+        </li>
+        <li>
+          <span><strong>Renamed symbols:</strong> A rename produces a <code>REDIRECTS_TO</code> edge from the old cue to the new. Traversal follows redirect edges transparently. Detection method: heuristic (same signature, different name), git blame, or explicit annotation?</span>
+        </li>
+        <li>
+          <span><strong>Modified symbols:</strong> A significantly changed implementation needs re-extraction of cues and tags, not just content replacement. What threshold defines "significant" — any change, a diff exceeding N lines, or LLM-judged semantic distance above a threshold?</span>
+        </li>
+        <li>
+          <span><strong>Merge semantics:</strong> The indexer must merge into the existing graph, not replace it. Merge algorithm: upsert by stable ID, upsert by <code>(file_path, symbol_name)</code>, or content-addressed by hash?</span>
+        </li>
+      </ul>
+
+      <div class="output-block">
+        <strong>Output</strong>
+        A stale-handling spec with the merge algorithm, tombstone schema, redirect edge semantics, and a decision on how old ASTs are sourced for diffing.
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 5 -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">5</div>
+      <div class="section-title">Embedding model versioning</div>
+    </div>
+    <div class="section-body">
+      <div class="why-block">
+        <strong>Why it comes fifth.</strong> Every node with a vector embedding is permanently tied to the model that produced it. This must be in the schema and the indexer from day one — adding it later requires re-reading every node to know which model was used. A half-migrated graph produces inconsistent similarity searches that are nearly impossible to debug.
+      </div>
+
+      <p class="decisions-label">What must be decided</p>
+      <ul class="decision-list">
+        <li>
+          <span><strong>Per-node metadata:</strong> Each node carrying an embedding must store <code>embedding_model</code> (e.g. <code>text-embedding-3-small</code>) and <code>embedding_model_version</code> (e.g. <code>2024-01</code>). These fields must be added to the schema from step 1.</span>
+        </li>
+        <li>
+          <span><strong>Model selection:</strong> Which model is used at indexing time — configured globally, per-project, or per-node-type? Is there a default that works without API keys (local model via <code>sentence-transformers</code>)?</span>
+        </li>
+        <li>
+          <span><strong>Migration command:</strong> <code>mragent migrate-embeddings --to &lt;model&gt;</code> must be specified now even if implemented later. Re-embed all nodes in a single transaction, or is full re-indexing from scratch acceptable?</span>
+        </li>
+        <li>
+          <span><strong>Cross-model search:</strong> If a partial migration is in progress, vector search almost certainly cannot work correctly. The DB backend must enforce that all nodes in a search index share the same model, and validate this invariant at index creation.</span>
+        </li>
+      </ul>
+
+      <div class="output-block">
+        <strong>Output</strong>
+        An addendum to the schema document specifying the embedding metadata fields, the model selection config format, and the migration command signature.
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 6 -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">6</div>
+      <div class="section-title">Indexer atomicity</div>
+    </div>
+    <div class="section-body">
+      <div class="why-block">
+        <strong>Why it comes sixth.</strong> The indexer is the only writer. If it crashes mid-file, the graph is in an inconsistent state with no recovery path. Adding transactional guarantees after the fact requires rewriting the entire write path. There is currently nothing in the design preventing a half-indexed file from poisoning the graph.
+      </div>
+
+      <p class="decisions-label">What must be decided</p>
+      <ul class="decision-list">
+        <li>
+          <span><strong>Transaction granularity:</strong> What is the atomic unit — one file, one symbol, one commit? Per-file transactions are the practical choice: a file fits in a single transaction and the diff unit from git is already per-file.</span>
+        </li>
+        <li>
+          <span><strong>Checkpoint manifest:</strong> A persistent manifest records which file SHAs have been fully committed to the graph. On restart, the indexer skips files whose SHA appears with <code>status: committed</code>. Format: SQLite table, JSON file, or dedicated Neo4j label?</span>
+        </li>
+        <li>
+          <span><strong>Partial write recovery:</strong> If a transaction fails after some nodes are written but before commit — Neo4j: explicit transaction rollback. SQLite: automatic since transaction was never committed. Are there cases where auto-rollback is insufficient (e.g. vector index updates outside the transaction)?</span>
+        </li>
+        <li>
+          <span><strong>Crash-safe manifest update:</strong> The manifest entry for a file must be written atomically <em>after</em> the DB transaction commits, not before. Mechanism: two-phase write, WAL-style approach, or treating the DB transaction itself as the manifest?</span>
+        </li>
+      </ul>
+
+      <div class="output-block">
+        <strong>Output</strong>
+        An indexer atomicity spec with the checkpoint manifest schema, the per-file transaction protocol, and the restart/recovery algorithm written in pseudocode.
+      </div>
+    </div>
+  </div>
+
+  <!-- Closing -->
+  <div class="closing">
+    <strong>These are specification tasks, not implementation tasks.</strong> Each produces a document or interface definition. The implementation plan cannot be written until all six exist — because every component (indexer, GraphStore backends, MCP server, CLI) is a direct translation of these specifications into code.
+  </div>
+
+</div>
+</body>
+</html>
