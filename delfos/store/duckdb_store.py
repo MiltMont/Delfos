@@ -6,8 +6,9 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
+from pydantic import TypeAdapter
 
-from delfos.schema import Direction, Edge, EdgeType, Node, NodeType
+from delfos.schema import Direction, Edge, EdgeType, EmbeddedMixin, Node, NodeType
 
 from .base import GraphStore, IndexedFile, VectorSearchResult
 
@@ -43,6 +44,21 @@ _EDGE_COLUMNS: list[str] = [
     "git_sha",
     "indexed_at",
 ]
+
+_NODE_ADAPTER: TypeAdapter[Node] = TypeAdapter(Node)
+
+
+def _node_params(node: Node) -> list[object]:
+    data = node.model_dump()
+    return [data.get(col) for col in _NODE_COLUMNS]
+
+
+def _row_to_node(row: tuple[object, ...]) -> Node:
+    raw = dict(zip(_NODE_COLUMNS, row, strict=True))
+    # extra="forbid" on the models: keep only populated columns so a row for
+    # one node type never carries another type's columns into validation.
+    data = {k: v for k, v in raw.items() if v is not None}
+    return _NODE_ADAPTER.validate_python(data)
 
 
 class DuckDBGraphStore(GraphStore):
@@ -136,7 +152,24 @@ class DuckDBGraphStore(GraphStore):
     # --- node / edge writes ------------------------------------------------
 
     def upsert_node(self, node: Node) -> None:
-        raise NotImplementedError
+        # isinstance narrows to CueNode | ContentNode (the EmbeddedMixin types),
+        # so node.embedding / node.embedding_model are typed for pyright strict.
+        if isinstance(node, EmbeddedMixin) and node.embedding is not None:
+            if node.embedding_model != self.embedding_model:
+                raise ValueError(
+                    f"embedding_model {node.embedding_model!r} "
+                    f"does not match store model {self.embedding_model!r}"
+                )
+            if len(node.embedding) != self.embedding_dim:
+                raise ValueError(
+                    f"embedding length {len(node.embedding)} != store dim {self.embedding_dim}"
+                )
+        cols = ", ".join(_NODE_COLUMNS)
+        placeholders = ", ".join(["?"] * len(_NODE_COLUMNS))
+        self._con.execute(
+            f"INSERT OR REPLACE INTO nodes ({cols}) VALUES ({placeholders})",
+            _node_params(node),
+        )
 
     def upsert_edge(self, edge: Edge) -> None:
         raise NotImplementedError
@@ -150,7 +183,11 @@ class DuckDBGraphStore(GraphStore):
     # --- reads -------------------------------------------------------------
 
     def get_node(self, node_id: str) -> Node | None:
-        raise NotImplementedError
+        cols = ", ".join(_NODE_COLUMNS)
+        row = self._con.execute(f"SELECT {cols} FROM nodes WHERE id = ?", [node_id]).fetchone()
+        if row is None:
+            return None
+        return _row_to_node(row)
 
     def neighbors(
         self,
