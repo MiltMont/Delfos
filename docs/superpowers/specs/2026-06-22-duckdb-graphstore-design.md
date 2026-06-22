@@ -30,7 +30,7 @@ These four forks were chosen during brainstorming, each over explicit alternativ
    deferred: the HNSW index, and tombstone/`status` filtering.
 4. **Storage: one `nodes` table, typed columns.** A single `nodes` table holds the common
    `BaseNode` fields plus every type-specific field as its own nullable, typed column
-   (`embedding` as a real `FLOAT[dim]` column). The `node_type` discriminator drives
+   (`embedding` as a real `DOUBLE[dim]` column). The `node_type` discriminator drives
    row → correct Pydantic model on read. Single id space, single-table reads, and
    `vector_search` is a plain column scan.
 
@@ -48,7 +48,7 @@ nodes(
   node_type TEXT,                    -- discriminator: cue | tag | content
   source_file TEXT, git_sha TEXT, indexed_at TIMESTAMP,
   status TEXT, deleted_at TIMESTAMP, deleted_by_commit TEXT,
-  embedding FLOAT[<dim>],            -- NULL for tags; fixed-size enables cosine
+  embedding DOUBLE[<dim>],           -- NULL for tags; fixed-size enables cosine
   embedding_model TEXT, embedding_model_version TEXT,
   cue_type TEXT, text TEXT,                                 -- cue-only
   category TEXT, value TEXT,                                -- tag-only
@@ -67,9 +67,10 @@ indexed_files(
 )
 ```
 
-`embedding` is a **fixed-size `FLOAT[dim]`**, with `dim` baked from the constructor's
-`embedding_dim`, so `array_cosine_distance` applies. Type-specific columns are nullable and
-populated only for their node type.
+`embedding` is a **fixed-size `DOUBLE[dim]`**, with `dim` baked from the constructor's
+`embedding_dim`, so `array_cosine_distance` applies. `DOUBLE` (not `FLOAT`) is used so the
+64-bit Python floats the store receives round-trip exactly. Type-specific columns are
+nullable and populated only for their node type.
 
 ## Lifecycle & write validation
 
