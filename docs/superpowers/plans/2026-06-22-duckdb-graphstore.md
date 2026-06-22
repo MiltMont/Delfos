@@ -28,6 +28,7 @@ Adds pytest, the temp-file fixture, the three table schemas, and idempotent `ini
 **Files:**
 - Modify: `pyproject.toml` (add `pytest` to `[dependency-groups].dev`)
 - Modify: `delfos/store/duckdb_store.py`
+- Create: `tests/__init__.py`, `tests/store/__init__.py` (empty package markers)
 - Create: `tests/store/test_duckdb_store.py`
 
 **Interfaces:**
@@ -49,6 +50,12 @@ dev = [
 
 Then run: `uv sync`
 Expected: pytest installed.
+
+Create empty package markers so pytest and pyright treat the test tree unambiguously:
+
+```bash
+mkdir -p tests/store && touch tests/__init__.py tests/store/__init__.py
+```
 
 - [ ] **Step 2: Write the failing lifecycle test**
 
@@ -115,7 +122,7 @@ from pathlib import Path
 
 import duckdb
 
-from delfos.schema import Direction, Edge, EdgeType, Node, NodeType
+from delfos.schema import Direction, Edge, EdgeType, EmbeddedMixin, Node, NodeType
 
 from .base import GraphStore, IndexedFile, VectorSearchResult
 
@@ -386,16 +393,17 @@ Then implement the methods on the class:
 
 ```python
     def upsert_node(self, node: Node) -> None:
-        embedding = getattr(node, "embedding", None)
-        if embedding is not None:
-            if getattr(node, "embedding_model", None) != self.embedding_model:
+        # isinstance narrows to CueNode | ContentNode (the EmbeddedMixin types),
+        # so node.embedding / node.embedding_model are typed for pyright strict.
+        if isinstance(node, EmbeddedMixin) and node.embedding is not None:
+            if node.embedding_model != self.embedding_model:
                 raise ValueError(
-                    f"embedding_model {getattr(node, 'embedding_model', None)!r} "
+                    f"embedding_model {node.embedding_model!r} "
                     f"does not match store model {self.embedding_model!r}"
                 )
-            if len(embedding) != self.embedding_dim:
+            if len(node.embedding) != self.embedding_dim:
                 raise ValueError(
-                    f"embedding length {len(embedding)} != store dim {self.embedding_dim}"
+                    f"embedding length {len(node.embedding)} != store dim {self.embedding_dim}"
                 )
         cols = ", ".join(_NODE_COLUMNS)
         placeholders = ", ".join(["?"] * len(_NODE_COLUMNS))
@@ -433,9 +441,9 @@ Expected: ruff clean, pyright `0 errors`.
 
 ---
 
-### Task 3: Embedding-invariant validation
+### Task 3: Embedding-invariant validation — tests
 
-Locks the embedding-model and dimension guards with explicit tests.
+Locks the embedding-model and dimension guards with explicit tests. **No production code in this task** — the guards already ship in Task 2's `upsert_node`; this task only proves them, so Step 2 verifies a *pass*, not a red phase.
 
 **Files:**
 - Modify: `tests/store/test_duckdb_store.py`
@@ -503,10 +511,10 @@ Adds edge writes and directional neighbor traversal with an optional type filter
 
 - [ ] **Step 1: Write failing edge/neighbor tests**
 
-Append to `tests/store/test_duckdb_store.py` (add `Edge`, `EdgeType`, `Direction` to the imports):
+Append to `tests/store/test_duckdb_store.py`. **Merge** `Direction`, `Edge`, `EdgeType` into the existing `from delfos.schema import (...)` block from Task 2 — do **not** add a second `from delfos.schema import` line, or `ruff check` will fail with `I001` (it is not auto-fixed by `ruff format`).
 
 ```python
-from delfos.schema import Direction, Edge, EdgeType
+# (Direction, Edge, EdgeType now come from the merged Task 2 import block.)
 
 
 def _edge(src: str, tgt: str, etype: EdgeType = EdgeType.CUE_OF) -> Edge:
@@ -629,6 +637,7 @@ Adds hard deletion of single nodes and whole-file purges, both cascading to edge
 **Interfaces:**
 - Consumes: `upsert_node` / `upsert_edge` / `get_node` / `neighbors`.
 - Produces: `delete_node(node_id) -> None`, `delete_nodes_for_file(source_file) -> None`.
+- **Contract:** `delete_nodes_for_file` issues two statements (edges, then nodes) and deliberately does **not** open its own transaction — the indexer calls it inside `transaction()` so the delete and the subsequent re-insert commit as one atomic file re-index (the one-file-per-transaction model). Self-wrapping would break that composition.
 
 - [ ] **Step 1: Write failing deletion tests**
 
@@ -668,6 +677,19 @@ def test_delete_nodes_for_file_removes_nodes_and_edges(store: DuckDBGraphStore) 
     assert store.get_node("tag-keep") is not None  # b.py node survives
     edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()
     assert edge_count is not None and edge_count[0] == 0  # both edges gone
+
+
+def test_delete_nodes_for_file_clears_null_provenance_edge(store: DuckDBGraphStore) -> None:
+    # An edge with source_file=None is removed via the source_id/target_id
+    # fallback, not the source_file clause.
+    store.upsert_node(make_cue("cue-1"))
+    store.upsert_node(make_content("content-1"))
+    store.upsert_edge(
+        Edge(source_id="cue-1", target_id="content-1", edge_type=EdgeType.CUE_OF)
+    )  # source_file defaults to None
+    store.delete_nodes_for_file("a.py")
+    edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()
+    assert edge_count is not None and edge_count[0] == 0
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -703,7 +725,7 @@ Implement on the class:
 - [ ] **Step 4: Run to verify pass**
 
 Run: `uv run pytest tests/store/test_duckdb_store.py -k "delete" -v`
-Expected: PASS (2 passed).
+Expected: PASS (3 passed).
 
 - [ ] **Step 5: Lint, type-check, commit**
 
@@ -771,7 +793,7 @@ def test_vector_search_skips_null_embeddings(store: DuckDBGraphStore) -> None:
     assert [r.node_id for r in results] == ["cue-1"]
 ```
 
-Add `NodeType` to the test imports.
+Merge `NodeType` into the existing `from delfos.schema import (...)` block — do not add a separate import line (see the `I001` note in Task 4).
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -1037,6 +1059,8 @@ Expected: ruff clean, pyright `0 errors`, full suite green. No `NotImplementedEr
 
 - **DuckDB typing under pyright strict:** `duckdb.connect` returns `duckdb.DuckDBPyConnection`; `.execute(...).fetchone()` is typed as `tuple[Any, ...] | None` and `.fetchall()` as `list[Any]`. The code above annotates the connection explicitly. If pyright flags an `Any`-return in a specific spot, prefer an explicit local annotation (e.g. `row: tuple[object, ...] | None = ...`) over a blanket `# type: ignore`.
 - **StrEnum binding:** all schema enums are `StrEnum` (a `str` subclass), so binding `node_type`, `status`, `cue_type`, etc. as parameters sends their string value, and reading them back as strings re-validates cleanly through `TypeAdapter(Node)`.
+- **Array columns come back as tuples:** DuckDB returns a `DOUBLE[dim]` column value as a Python `tuple`, not a `list`. `_row_to_node` passes it to `TypeAdapter(Node).validate_python`, which coerces the tuple to `list[float]` for the `embedding` field — so `get_node(...) == node` holds. (Verified: `(0.1, 0.2, 0.3)` → `[0.1, 0.2, 0.3]`, equal to the original.) Don't compare a raw fetched row's array against a `list` directly; go through the model.
+- **`close()` rolls back an open transaction:** verified on DuckDB 1.5.4 — closing a connection with an uncommitted `BEGIN` does not raise and discards the open transaction, which is what `test_uncommitted_state_lost_on_reopen` relies on. No explicit `rollback()` before `close()` is needed to make that test pass.
 - **`DOUBLE[dim]`, not `FLOAT[dim]`:** the store receives Python `float` (64-bit). Storing as `DOUBLE` round-trips embeddings exactly, so `get_node(...) == node` holds for arbitrary embedding values; a `FLOAT` (32-bit) column would lose precision and break round-trip equality. `array_cosine_distance` accepts `DOUBLE` arrays. Revisit to `FLOAT` only if a future HNSW index requires 32-bit vectors.
 - **`INSERT OR REPLACE`** relies on the PRIMARY KEY of each table (declared in Task 1); don't drop those constraints.
 - Run the whole file (`uv run pytest tests/store/test_duckdb_store.py -v`) at the end of each task, not just the filtered subset, once you're past Task 4 — cheap regression insurance.
