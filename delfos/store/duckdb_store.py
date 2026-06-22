@@ -243,7 +243,19 @@ class DuckDBGraphStore(GraphStore):
         *,
         node_type: NodeType | None = None,
     ) -> list[VectorSearchResult]:
-        raise NotImplementedError
+        dim = self.embedding_dim
+        sql = (
+            f"SELECT id, array_cosine_distance(embedding, ?::DOUBLE[{dim}]) AS dist "
+            f"FROM nodes WHERE embedding IS NOT NULL"
+        )
+        params: list[object] = [embedding]
+        if node_type is not None:
+            sql += " AND node_type = ?"
+            params.append(node_type)
+        sql += " ORDER BY dist ASC LIMIT ?"
+        params.append(k)
+        rows = self._con.execute(sql, params).fetchall()
+        return [VectorSearchResult(node_id=str(row[0]), score=1.0 - float(row[1])) for row in rows]
 
     # --- checkpoint manifest ----------------------------------------------
 

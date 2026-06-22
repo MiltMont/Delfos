@@ -15,6 +15,7 @@ from delfos.schema import (
     Edge,
     EdgeType,
     MemoryLayer,
+    NodeType,
     TagCategory,
     TagNode,
 )
@@ -232,3 +233,38 @@ def test_delete_nodes_for_file_clears_null_provenance_edge(store: DuckDBGraphSto
     store.delete_nodes_for_file("a.py")
     edge_count = store._con.execute("SELECT count(*) FROM edges").fetchone()  # type: ignore[reportPrivateUsage]
     assert edge_count is not None and edge_count[0] == 0
+
+
+def _unit(i: int) -> list[float]:
+    v = [0.0] * EMBEDDING_DIM
+    v[i] = 1.0
+    return v
+
+
+def test_vector_search_orders_by_similarity(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_cue("cue-a", embedding=_unit(0)))
+    store.upsert_node(make_cue("cue-b", embedding=_unit(1)))
+    results = store.vector_search(_unit(0), k=2)
+    assert [r.node_id for r in results] == ["cue-a", "cue-b"]
+    assert results[0].score == pytest.approx(1.0)
+    assert results[0].node is None
+
+
+def test_vector_search_respects_k(store: DuckDBGraphStore) -> None:
+    for i in range(5):
+        store.upsert_node(make_cue(f"cue-{i}", embedding=_unit(i % EMBEDDING_DIM)))
+    assert len(store.vector_search(_unit(0), k=2)) == 2
+
+
+def test_vector_search_filters_by_node_type(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_cue("cue-1", embedding=_unit(0)))
+    store.upsert_node(make_content("content-1", embedding=_unit(0)))
+    results = store.vector_search(_unit(0), k=5, node_type=NodeType.CUE)
+    assert [r.node_id for r in results] == ["cue-1"]
+
+
+def test_vector_search_skips_null_embeddings(store: DuckDBGraphStore) -> None:
+    store.upsert_node(make_tag("tag-1"))  # no embedding
+    store.upsert_node(make_cue("cue-1", embedding=_unit(0)))
+    results = store.vector_search(_unit(0), k=5)
+    assert [r.node_id for r in results] == ["cue-1"]
