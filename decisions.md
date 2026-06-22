@@ -38,7 +38,7 @@ Decisions made for the bare-bones implementation. Sections 1 and 2 are settled s
 ## Section 6 — Indexer atomicity
 
 - **Atomic unit:** one file per transaction. Per-file is small enough to fit in a single transaction and matches the git diff unit.
-- **Checkpoint manifest:** an `indexed_files` table in the same SQLite database.
+- **Checkpoint manifest:** an `indexed_files` table in the same DuckDB database.
   - Columns: `file_path TEXT`, `git_sha TEXT`, `indexed_at TIMESTAMP`
   - On startup: load this table and skip any file whose `(file_path, git_sha)` is already present.
-- **Recovery:** if the indexer dies mid-file, the SQLite transaction is never committed, so nothing is written. On restart, the file is processed cleanly. No additional recovery logic needed.
+- **Recovery:** if the indexer dies mid-file, the DuckDB transaction is never committed, so nothing is written. On restart, the file is processed cleanly. No additional recovery logic needed.

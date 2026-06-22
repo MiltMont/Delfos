@@ -29,17 +29,17 @@ This document identifies the decisions that are **blocking** — things that can
 
 ## 2. Database abstraction interface
 
-**Why it comes second:** The database is SQLite + sqlite-vec. No component should ever call it directly — the interface must be defined before the indexer or tools are implemented, because both layers call into it. Its shape is fully determined by the schema from step 1.
+**Why it comes second:** The database is DuckDB (with the VSS extension for vector search). No component should ever call it directly — the interface must be defined before the indexer or tools are implemented, because both layers call into it. Its shape is fully determined by the schema from step 1.
 
 **What must be decided:**
 
 - **Interface boundaries:** What are the primitive operations the interface must expose? Candidates: `upsert_node`, `upsert_edge`, `vector_search(embedding, k)`, `neighbors(node_id, edge_type, direction)`, `get_node(id)`, `delete_node(id)`, `begin_transaction / commit / rollback`. Are transactions first-class in the interface, or handled differently per backend?
 
-- **Vector search contract:** sqlite-vec provides ANN search. What does the interface contract promise — exact k-NN or approximate? What is the return type (node_id + score, or full node)?
+- **Vector search contract:** DuckDB's VSS extension provides ANN search via HNSW indexes. What does the interface contract promise — exact k-NN or approximate? What is the return type (node_id + score, or full node)?
 
-- **SQLite-vec vs DuckDB:** SQLite-vec is simpler to embed and fits the prototype well; DuckDB has a richer query language but adds complexity. This choice should be made now, not during implementation, because the two have different transaction models.
+- **Backend choice (resolved):** DuckDB. A single embedded file holds the relational tables (nodes, edges, checkpoint manifest) and, via the VSS extension, the vector index — keeping the prototype dependency-free while giving a richer query language than sqlite-vec for traversal queries.
 
-**Output of this step:** A Python abstract base class (`GraphStore`) with all method signatures, return types, and documented contracts. A single SQLite + sqlite-vec backend stub should be written (no implementation, just the class skeleton satisfying the interface).
+**Output of this step:** A Python abstract base class (`GraphStore`) with all method signatures, return types, and documented contracts. A single DuckDB backend stub should be written (no implementation, just the class skeleton satisfying the interface).
 
 ---
 
@@ -111,9 +111,9 @@ This document identifies the decisions that are **blocking** — things that can
 
 - **Transaction granularity:** What is the atomic unit — one file, one symbol, one commit? Per-file transactions are the practical choice: a file is small enough to fit in a single transaction, and the diff unit from git is already per-file.
 
-- **Checkpoint manifest:** A persistent manifest records which file SHAs have been fully committed to the graph. On restart, the indexer skips files whose SHA appears in the manifest with `status: committed`. What is the manifest format — a dedicated SQLite table, or a JSON file?
+- **Checkpoint manifest:** A persistent manifest records which file SHAs have been fully committed to the graph. On restart, the indexer skips files whose SHA appears in the manifest with `status: committed`. What is the manifest format — a dedicated DuckDB table, or a JSON file?
 
-- **Partial write recovery:** If a transaction fails after some nodes are written but before commit, SQLite never commits the transaction so rollback is automatic. Are there cases where auto-rollback is not sufficient (e.g. vector index updates that happen outside the transaction)?
+- **Partial write recovery:** If a transaction fails after some nodes are written but before commit, DuckDB never commits the transaction so rollback is automatic. Are there cases where auto-rollback is not sufficient (e.g. vector index updates that happen outside the transaction)?
 
 - **Crash-safe manifest update:** The manifest entry for a file must be written atomically after the DB transaction commits, not before. What mechanism ensures this ordering — a two-phase write, a WAL-style approach, or treating the DB transaction as the manifest?
 

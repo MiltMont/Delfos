@@ -459,7 +459,7 @@
     </div>
     <div class="section-body">
       <div class="why-block">
-        <strong>Why it comes second.</strong> The tiered backend decision (SQLite + sqlite-vec for local, Neo4j for teams) means no component should ever call a database directly. The interface must be defined before the indexer or tools are implemented. Its shape is fully determined by the schema from step 1.
+        <strong>Why it comes second.</strong> The database is DuckDB (with the VSS extension for vector search), and no component should ever call it directly. The interface must be defined before the indexer or tools are implemented. Its shape is fully determined by the schema from step 1.
       </div>
 
       <p class="decisions-label">What must be decided</p>
@@ -468,22 +468,16 @@
           <span><strong>Interface boundaries:</strong> What primitive operations must the interface expose? Candidates: <code>upsert_node</code>, <code>upsert_edge</code>, <code>vector_search(embedding, k)</code>, <code>neighbors(node_id, edge_type, direction)</code>, <code>get_node(id)</code>, <code>delete_node(id)</code>, <code>begin_transaction / commit / rollback</code>. Are transactions first-class in the interface?</span>
         </li>
         <li>
-          <span><strong>Vector search contract:</strong> Both SQLite-vec and Neo4j support ANN search with different guarantees. Does the interface promise exact k-NN or approximate? Return type: node_id + score, or full node?</span>
+          <span><strong>Vector search contract:</strong> DuckDB's VSS extension provides ANN search via HNSW indexes. Does the interface promise exact k-NN or approximate? Return type: node_id + score, or full node?</span>
         </li>
         <li>
-          <span><strong>Backend selection:</strong> Config file, environment variable, or URL scheme (<code>neo4j://</code> vs <code>sqlite://</code>)? Is the backend swappable at runtime or fixed at startup?</span>
-        </li>
-        <li>
-          <span><strong>SQLite-vec vs DuckDB:</strong> SQLite-vec is simpler to embed; DuckDB has a richer query language and handles larger graphs. This choice must be made now — the two have different transaction models.</span>
-        </li>
-        <li>
-          <span><strong>Migration path:</strong> When a user moves from SQLite to Neo4j, what is the upgrade path? Does the interface include an <code>export / import</code> operation, or is re-indexing from scratch acceptable?</span>
+          <span><strong>Backend choice (resolved):</strong> DuckDB. A single embedded file holds the relational tables (nodes, edges, checkpoint manifest) and, via the VSS extension, the vector index — keeping the prototype dependency-free while giving a richer query language than sqlite-vec for traversal queries.</span>
         </li>
       </ul>
 
       <div class="output-block">
         <strong>Output</strong>
-        A Python abstract base class (<code>GraphStore</code>) with all method signatures, return types, and documented contracts. Both backend stubs written as skeleton classes satisfying the interface — no implementation yet.
+        A Python abstract base class (<code>GraphStore</code>) with all method signatures, return types, and documented contracts. A single DuckDB backend stub written as a skeleton class satisfying the interface — no implementation yet.
       </div>
     </div>
   </div>
@@ -616,10 +610,10 @@
           <span><strong>Transaction granularity:</strong> What is the atomic unit — one file, one symbol, one commit? Per-file transactions are the practical choice: a file fits in a single transaction and the diff unit from git is already per-file.</span>
         </li>
         <li>
-          <span><strong>Checkpoint manifest:</strong> A persistent manifest records which file SHAs have been fully committed to the graph. On restart, the indexer skips files whose SHA appears with <code>status: committed</code>. Format: SQLite table, JSON file, or dedicated Neo4j label?</span>
+          <span><strong>Checkpoint manifest:</strong> A persistent manifest records which file SHAs have been fully committed to the graph. On restart, the indexer skips files whose SHA appears with <code>status: committed</code>. Format: DuckDB table or JSON file?</span>
         </li>
         <li>
-          <span><strong>Partial write recovery:</strong> If a transaction fails after some nodes are written but before commit — Neo4j: explicit transaction rollback. SQLite: automatic since transaction was never committed. Are there cases where auto-rollback is insufficient (e.g. vector index updates outside the transaction)?</span>
+          <span><strong>Partial write recovery:</strong> If a transaction fails after some nodes are written but before commit, DuckDB never commits the transaction so rollback is automatic. Are there cases where auto-rollback is insufficient (e.g. vector index updates outside the transaction)?</span>
         </li>
         <li>
           <span><strong>Crash-safe manifest update:</strong> The manifest entry for a file must be written atomically <em>after</em> the DB transaction commits, not before. Mechanism: two-phase write, WAL-style approach, or treating the DB transaction itself as the manifest?</span>
