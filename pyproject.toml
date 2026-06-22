@@ -1,0 +1,35 @@
+[project]
+name = "delfos"
+version = "0.1.0"
+description = "Graph memory MCP server for codebases (MRAgent-style reconstruction)"
+readme = "README.md"
+authors = [
+    { name = "Milton Montiel", email = "miltgonmont@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.1.0",
+    "pydantic>=2.9.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6.0",
+    "pyright>=1.1.380",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
