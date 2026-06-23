@@ -17,6 +17,25 @@ out of date — both are fully implemented and covered by tests under `tests/`.
 - Standard commands (already documented in `CLAUDE.md`): `uv run ruff check .`,
   `uv run ruff format --check .`, `uv run pyright` (strict mode), `uv run pytest`.
 
+### C++ toolchain (for `libdelfos`, see `docs/libdelfos-plan.md`)
+The cloud VM has the toolchain the plan requires preinstalled: `clang++` 18
+(LLVM; the plan standardizes on clang, not GCC), `cmake` 3.28, `ninja`, and the
+clang sanitizer runtimes (ASan/UBSan via `libclang-rt-18-dev`). The plan's
+`CMakePresets.json` uses the Ninja generator with `clang++`. Build/test commands
+are in `docs/libdelfos-plan.md` section 11 (`cmake --preset debug`, etc.).
+
+Non-obvious gotchas:
+- `clang++` auto-selects the **GCC 14** libstdc++ install (highest version
+  present), so `libstdc++-14-dev` must be installed — not just `libstdc++-13-dev`.
+  Both are installed here; without the 14 dev package, links fail with
+  `cannot find -lstdc++` and `<span>`/`<cstdint>` headers are not found.
+- All external C++ deps (USearch, FlatBuffers, nanobind, Catch2, nanobench) are
+  pulled via CMake `FetchContent` at **configure time** — the first configure
+  needs network access to GitHub and is slower while it clones/builds them.
+- The C++ library source (`libdelfos/`, top-level `CMakeLists.txt`,
+  `CMakePresets.json`) does not exist in the repo yet; the toolchain is ready but
+  there is nothing to build until the plan's phases are implemented.
+
 ### Running it end-to-end
 - There is no server entrypoint. To exercise the core flow, drive the library
   directly: build a `DuckDBGraphStore`, wrap it in `Indexer` with an `Embedder`,
