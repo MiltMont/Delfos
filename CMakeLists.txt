@@ -36,19 +36,24 @@ FetchContent_Declare(nanobench
     GIT_SHALLOW    ON)
 FetchContent_MakeAvailable(nanobench)
 
-# ── Phase 3: FlatBuffers (snapshot serialisation) — fetched when snapshot.hpp lands
-# FetchContent_Declare(flatbuffers
-#     GIT_REPOSITORY https://github.com/google/flatbuffers
-#     GIT_TAG        v24.3.25
-#     GIT_SHALLOW    ON)
-# set(FLATBUFFERS_BUILD_TESTS OFF)
-# FetchContent_MakeAvailable(flatbuffers)
+# ── FlatBuffers (snapshot serialisation, Phase 3) ─────────────────────────────
+FetchContent_Declare(flatbuffers
+    GIT_REPOSITORY https://github.com/google/flatbuffers.git
+    GIT_TAG        v24.3.25
+    GIT_SHALLOW    ON)
+set(FLATBUFFERS_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(FLATBUFFERS_INSTALL        OFF CACHE BOOL "" FORCE)
+set(FLATBUFFERS_BUILD_FLATLIB  ON  CACHE BOOL "" FORCE)
+set(FLATBUFFERS_BUILD_FLATC    ON  CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(flatbuffers)
 
 # ── Core interface library (header-only) ──────────────────────────────────────
 add_library(delfos_core INTERFACE)
-target_include_directories(delfos_core INTERFACE libdelfos/include)
-target_link_libraries(delfos_core INTERFACE usearch)
-# Phase 3 will add: target_link_libraries(delfos_core INTERFACE flatbuffers)
+target_include_directories(delfos_core INTERFACE
+    libdelfos/include
+    libdelfos/flatbuffers   # for delfos_generated.h
+)
+target_link_libraries(delfos_core INTERFACE usearch flatbuffers)
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 option(DELFOS_BUILD_TESTS "Build unit tests" ON)
