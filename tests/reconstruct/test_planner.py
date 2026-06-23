@@ -7,8 +7,10 @@ from delfos.reconstruct.planner import (
     CandidateSummary,
     Collected,
     HopDecision,
+    HopPlanner,
     HopRequest,
 )
+from delfos.reconstruct.planners.fake import FakeHopPlanner
 
 
 def test_candidate_summary_roundtrips() -> None:
@@ -40,3 +42,30 @@ def test_hop_request_holds_candidates() -> None:
     req = HopRequest(query="how does auth work", current=cur, candidates=[cur], hops_remaining=3)
     assert req.hops_remaining == 3
     assert req.candidates[0].id == "cue-1"
+
+
+def test_fake_planner_returns_scripted_decisions_then_stops() -> None:
+    d1 = HopDecision(collect=[Collected(id="a", relevance=0.9)], descend_into="a", stop=False)
+    planner = FakeHopPlanner([d1])
+    cur = CandidateSummary(id="cue-1", node_kind="cue", label="x", snippet=None, tags=[])
+    req = HopRequest(query="q", current=cur, candidates=[cur], hops_remaining=3)
+
+    assert planner.decide(req) is d1
+    # Once the script is exhausted, it returns a terminal stop decision.
+    after = planner.decide(req)
+    assert after.stop is True
+    assert planner.call_count == 2
+    assert len(planner.requests) == 2
+
+
+def test_fake_planner_raises_after_error_after() -> None:
+    planner = FakeHopPlanner([], error_after=0)
+    cur = CandidateSummary(id="cue-1", node_kind="cue", label="x", snippet=None, tags=[])
+    req = HopRequest(query="q", current=cur, candidates=[cur], hops_remaining=1)
+
+    with pytest.raises(RuntimeError):
+        planner.decide(req)
+
+
+def test_fake_planner_satisfies_protocol() -> None:
+    assert isinstance(FakeHopPlanner([]), HopPlanner)
