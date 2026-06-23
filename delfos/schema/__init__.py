@@ -17,6 +17,7 @@ from .nodes import (
     CueNode,
     EmbeddedMixin,
     Node,
+    SourcedNode,
     TagNode,
 )
 
@@ -34,6 +35,7 @@ __all__ = [
     "Node",
     "NodeStatus",
     "NodeType",
+    "SourcedNode",
     "TagNode",
     "TagCategory",
 ]
