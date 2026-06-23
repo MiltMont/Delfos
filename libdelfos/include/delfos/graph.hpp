@@ -86,6 +86,14 @@ public:
 
     bool dirty() const noexcept { return dirty_; }
 
+    // Returns all live NodeIdx values sourced from source_file.
+    // Valid at any time (uses file_index_ which is always current).
+    std::vector<NodeIdx> nodes_for_file(std::string_view source_file) const {
+        auto it = file_index_.find(std::string(source_file));
+        if (it == file_index_.end()) return {};
+        return it->second;
+    }
+
     // ── Snapshot access (require dirty_ == false) ──────────────────────────
     // After rebuild(), nodes_ and edges_ contain only live entries with
     // contiguous 0-based indices — safe to iterate for serialisation.

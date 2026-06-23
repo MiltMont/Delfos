@@ -68,11 +68,37 @@ if(DELFOS_BUILD_BENCH)
     add_subdirectory(libdelfos/bench)
 endif()
 
+# ── scikit-build-core: when building as a Python wheel, force bindings ON ─────
+if(DEFINED SKBUILD)
+    set(DELFOS_BUILD_BINDINGS ON  CACHE BOOL "" FORCE)
+    set(DELFOS_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+    set(DELFOS_BUILD_BENCH    OFF CACHE BOOL "" FORCE)
+endif()
+
 # ── Python bindings ───────────────────────────────────────────────────────────
-# Phase 4: nanobind module (_delfos) and NativeGraphStore.
 option(DELFOS_BUILD_BINDINGS "Build nanobind Python module" OFF)
 if(DELFOS_BUILD_BINDINGS)
-    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-    # FetchContent_Declare(nanobind ...) will be added in Phase 4
+    # nanobind-config.cmake requires Python to be found before it is included.
+    find_package(Python 3 COMPONENTS Interpreter Development REQUIRED)
+
+    # Locate nanobind: prefer the installed Python package (scikit-build-core
+    # mode), fall back to FetchContent for manual cmake --preset builds.
+    execute_process(
+        COMMAND "${Python_EXECUTABLE}" -c
+            "import nanobind; print(nanobind.cmake_dir())"
+        OUTPUT_VARIABLE _NB_CMAKE_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if(_NB_CMAKE_DIR)
+        list(APPEND CMAKE_PREFIX_PATH "${_NB_CMAKE_DIR}")
+        find_package(nanobind CONFIG REQUIRED)
+    else()
+        FetchContent_Declare(nanobind
+            GIT_REPOSITORY https://github.com/wjakob/nanobind.git
+            GIT_TAG        v2.6.1
+            GIT_SHALLOW    ON)
+        FetchContent_MakeAvailable(nanobind)
+    endif()
+
     add_subdirectory(libdelfos/bindings)
 endif()

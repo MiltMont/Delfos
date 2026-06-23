@@ -43,9 +43,12 @@ struct NodeData {
     std::string body;
 
     // ── Embedding (Cue nodes primarily; Content optionally) ───────────────
-    std::vector<float> embedding;
-    std::string        embedding_model;
-    std::string        embedding_model_version;
+    // Stored as float64 (double) to match DuckDB precision and allow
+    // lossless Python round-trips. Downcast to float32 when inserting
+    // into VectorIndex (USearch uses float32 internally).
+    std::vector<double> embedding;
+    std::string         embedding_model;
+    std::string         embedding_model_version;
 };
 
 } // namespace delfos

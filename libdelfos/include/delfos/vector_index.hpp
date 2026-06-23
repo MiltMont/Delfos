@@ -61,7 +61,15 @@ public:
 
     // Insert (or replace) a vector for node.
     // embedding must have exactly dim() elements.
-    // type is stored for later type-filtered searches.
+    // Both float32 and float64 overloads are provided; double is downcasted
+    // to float32 before passing to USearch (which uses float32 internally).
+    inline void insert(NodeIdx node, NodeType type, std::span<const double> embedding) {
+        std::vector<float> f32(embedding.size());
+        for (std::size_t i = 0; i < embedding.size(); ++i)
+            f32[i] = static_cast<float>(embedding[i]);
+        insert(node, type, std::span<const float>(f32));
+    }
+
     inline void insert(NodeIdx node, NodeType type, std::span<const float> embedding) {
         assert(embedding.size() == dim_ && "embedding dimension mismatch");
 
@@ -85,6 +93,15 @@ public:
 
         index_.remove(static_cast<us::default_key_t>(node));
         node_types_.erase(it);
+    }
+
+    // double overload — converts to float32 before searching.
+    inline std::vector<VectorHit> search(std::span<const double> query, std::size_t k,
+                                         NodeType* type_filter = nullptr) const {
+        std::vector<float> f32(query.size());
+        for (std::size_t i = 0; i < query.size(); ++i)
+            f32[i] = static_cast<float>(query[i]);
+        return search(std::span<const float>(f32), k, type_filter);
     }
 
     // k-NN search. Returns up to k hits sorted by descending cosine similarity.
