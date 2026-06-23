@@ -74,6 +74,19 @@ class ReconstructionService:
                     out.append(content)
         return out
 
+    def traverse_reverse(self, content_ids: Sequence[str]) -> list[CueNode]:
+        """Discover sibling cues that point at the given content nodes."""
+        out: list[CueNode] = []
+        seen: set[str] = set()
+        for content_id in content_ids:
+            for neighbor in self._store.neighbors(
+                content_id, edge_type=EdgeType.CUE_OF, direction=Direction.INCOMING
+            ):
+                if isinstance(neighbor, CueNode) and neighbor.id not in seen:
+                    seen.add(neighbor.id)
+                    out.append(neighbor)
+        return out
+
     def _eligible_content(
         self, node: Node, wanted: set[TagFilter] | None, seen: set[str]
     ) -> ContentNode | None:

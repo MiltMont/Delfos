@@ -68,3 +68,33 @@ def test_traverse_forward_follows_redirect(store: DuckDBGraphStore) -> None:
     result = _service(store).traverse_forward(["cue-1"])
 
     assert [c.id for c in result] == ["content-new"]
+
+
+def test_traverse_reverse_finds_sibling_cues(store: DuckDBGraphStore) -> None:
+    content = make_content("content-1", "login")
+    cue_a = make_cue("cue-a", "auth")
+    cue_b = make_cue("cue-b", "signin")
+    edges = [
+        edge("cue-a", "content-1", EdgeType.CUE_OF),
+        edge("cue-b", "content-1", EdgeType.CUE_OF),
+    ]
+    load(store, [content, cue_a, cue_b], edges)
+
+    result = _service(store).traverse_reverse(["content-1"])
+
+    assert {c.id for c in result} == {"cue-a", "cue-b"}
+
+
+def test_traverse_reverse_dedups(store: DuckDBGraphStore) -> None:
+    c1 = make_content("content-1", "login")
+    c2 = make_content("content-2", "logout")
+    cue = make_cue("cue-a", "auth")
+    edges = [
+        edge("cue-a", "content-1", EdgeType.CUE_OF),
+        edge("cue-a", "content-2", EdgeType.CUE_OF),
+    ]
+    load(store, [c1, c2, cue], edges)
+
+    result = _service(store).traverse_reverse(["content-1", "content-2"])
+
+    assert [c.id for c in result] == ["cue-a"]
