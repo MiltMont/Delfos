@@ -53,3 +53,18 @@ def test_traverse_forward_dedups_across_cues(store: DuckDBGraphStore) -> None:
     result = _service(store).traverse_forward(["cue-1", "cue-2"])
 
     assert [c.id for c in result] == ["content-1"]
+
+
+def test_traverse_forward_follows_redirect(store: DuckDBGraphStore) -> None:
+    cue = make_cue("cue-1", "auth")
+    old = make_content("content-old", "login")
+    new = make_content("content-new", "login")
+    edges = [
+        edge("cue-1", "content-old", EdgeType.CUE_OF),
+        edge("content-old", "content-new", EdgeType.REDIRECTS_TO),
+    ]
+    load(store, [cue, old, new], edges)
+
+    result = _service(store).traverse_forward(["cue-1"])
+
+    assert [c.id for c in result] == ["content-new"]
