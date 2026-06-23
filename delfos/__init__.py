@@ -7,6 +7,7 @@ Cue-Tag-Content schema (:mod:`delfos.schema`) and the storage abstraction
 (:mod:`delfos.store`).
 """
 
+from delfos.indexer import Embedder, Indexer, IndexStats, OpenAIEmbedder
 from delfos.schema import (
     ContentKind,
     ContentNode,
@@ -19,6 +20,7 @@ from delfos.schema import (
     Node,
     NodeStatus,
     NodeType,
+    SourcedNode,
     TagCategory,
     TagNode,
 )
@@ -33,12 +35,17 @@ __all__ = [
     "Direction",
     "Edge",
     "EdgeType",
+    "Embedder",
     "GraphStore",
+    "IndexStats",
     "IndexedFile",
+    "Indexer",
     "MemoryLayer",
     "Node",
     "NodeStatus",
     "NodeType",
+    "OpenAIEmbedder",
+    "SourcedNode",
     "TagCategory",
     "TagNode",
     "VectorSearchResult",
