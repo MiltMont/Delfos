@@ -31,7 +31,7 @@ table Node {
     signature:             string;
     docstring:             string;
     body:                  string;
-    embedding:             [float];
+    embedding:             [double];
     embedding_model:       string;
     embedding_model_version: string;
 }

@@ -12,10 +12,10 @@ using namespace delfos;
 static constexpr std::size_t DIM = 4;
 static constexpr char MODEL[]    = "test-model";
 
-static std::vector<float> vec(float v0, float v1, float v2, float v3) {
+static std::vector<double> vec(double v0, double v1, double v2, double v3) {
     // normalise so cosine similarity is well-defined
-    float len = std::sqrt(v0*v0 + v1*v1 + v2*v2 + v3*v3);
-    if (len == 0.0f) len = 1.0f;
+    double len = std::sqrt(v0*v0 + v1*v1 + v2*v2 + v3*v3);
+    if (len == 0.0) len = 1.0;
     return {v0/len, v1/len, v2/len, v3/len};
 }
 
