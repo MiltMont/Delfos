@@ -7,19 +7,34 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
 
-# ── Phase 1 test dependency ───────────────────────────────────────────────────
+# ── Catch2 (unit tests) ───────────────────────────────────────────────────────
 FetchContent_Declare(Catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2.git
     GIT_TAG        v3.7.1
     GIT_SHALLOW    ON)
 FetchContent_MakeAvailable(Catch2)
 
-# ── Phase 2: USearch (HNSW vector index) — fetched when vector_index.hpp lands
-# FetchContent_Declare(usearch
-#     GIT_REPOSITORY https://github.com/unum-cloud/usearch
-#     GIT_TAG        main
-#     GIT_SHALLOW    ON)
-# FetchContent_MakeAvailable(usearch)
+# ── USearch (HNSW vector index, Phase 2) ─────────────────────────────────────
+FetchContent_Declare(usearch
+    GIT_REPOSITORY https://github.com/unum-cloud/usearch.git
+    GIT_TAG        v2.16.5
+    GIT_SHALLOW    ON)
+set(USEARCH_BUILD_TEST_CPP   OFF CACHE BOOL "" FORCE)
+set(USEARCH_BUILD_BENCH_CPP  OFF CACHE BOOL "" FORCE)
+set(USEARCH_BUILD_LIB_C      OFF CACHE BOOL "" FORCE)
+set(USEARCH_BUILD_SQLITE     OFF CACHE BOOL "" FORCE)
+# Disable the fp16 library shim — it pulls in a header that isn't installed.
+# We don't use float16 vectors, so this is safe to turn off.
+set(USEARCH_USE_FP16LIB      OFF CACHE BOOL "" FORCE)
+set(USEARCH_USE_SIMSIMD      OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(usearch)
+
+# ── nanobench (microbenchmarks, Phase 2) ─────────────────────────────────────
+FetchContent_Declare(nanobench
+    GIT_REPOSITORY https://github.com/martinus/nanobench.git
+    GIT_TAG        v4.3.11
+    GIT_SHALLOW    ON)
+FetchContent_MakeAvailable(nanobench)
 
 # ── Phase 3: FlatBuffers (snapshot serialisation) — fetched when snapshot.hpp lands
 # FetchContent_Declare(flatbuffers
@@ -32,7 +47,8 @@ FetchContent_MakeAvailable(Catch2)
 # ── Core interface library (header-only) ──────────────────────────────────────
 add_library(delfos_core INTERFACE)
 target_include_directories(delfos_core INTERFACE libdelfos/include)
-# Phase 2/3 will add: target_link_libraries(delfos_core INTERFACE usearch flatbuffers)
+target_link_libraries(delfos_core INTERFACE usearch)
+# Phase 3 will add: target_link_libraries(delfos_core INTERFACE flatbuffers)
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 option(DELFOS_BUILD_TESTS "Build unit tests" ON)
