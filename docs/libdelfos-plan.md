@@ -1,5 +1,8 @@
 # libdelfos — Full Implementation Plan
 
+> Implementation decisions that are not explicitly specified in this plan are
+> tracked in `docs/libdelfos-implementation-decisions.md`.
+
 > This document is the single source of truth for implementing `libdelfos`, the C++ graph core that replaces DuckDB in Delfos. Any agent or developer reading this should have complete context to implement the library without additional information.
 
 ---
