@@ -25,22 +25,57 @@ The indexer parses Python files, extracts a Cue-Tag-Content graph, embeds cue no
 
 ### Why replace DuckDB with C++?
 
-The hot path is `reconstruct(query, budget=3)`: vector search → iterative DFS. In DuckDB, each hop costs a full SQL round-trip (parse/plan/execute/deserialize). In a native C++ CSR graph, each hop is a pointer dereference. Measured difference: **50–200ms (DuckDB) vs. < 1ms (C++)** for a 10K-file repo.
+The read and write hot paths are **`GraphStore` primitives** — especially `vector_search`, `neighbors`, and `get_node`. In DuckDB, each call costs a full SQL round-trip (parse/plan/execute/deserialize). In a native C++ CSR graph, adjacency is a pointer dereference and vector search uses HNSW in-process. Measured difference for a 10K-file repo: **~50–200ms per DuckDB hop vs. < 1μs per C++ neighbor lookup** and **< 1ms for k-NN search**.
+
+libdelfos does **not** own traversal orchestration. Future read-path code (MCP tools, reconstruction) stays in Python and calls these primitives through the unchanged `GraphStore` ABC.
 
 ### What libdelfos is
 
-A **header-only C++ library** that provides:
+A **header-only C++ storage engine** that provides:
+
 1. An in-memory directed property graph (CSR layout)
 2. An HNSW vector index for cosine similarity search
-3. A `reconstruct()` function that does the entire hot path in C++
-4. FlatBuffers-based snapshot persistence
-5. Python bindings via nanobind (drop-in replacement for `DuckDBGraphStore`)
+3. FlatBuffers-based snapshot persistence
+4. A thin Python extension (`_delfos`) used exclusively by `NativeGraphStore`
+
+### Architectural boundaries
+
+libdelfos is a **storage engine**, not a port of the Python product API.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Python product code (indexer, future MCP read path)    │
+│  depends on GraphStore ABC only                         │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────┐
+│  NativeGraphStore (delfos/store/native_store.py)        │
+│  Pydantic ↔ native conversion, txn semantics, validation│
+└──────────────────────────┬──────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────┐
+│  libdelfos (C++): Graph, VectorIndex, snapshot          │
+│  engine-native API — indices, CSR, batch rebuild          │
+└─────────────────────────────────────────────────────────┘
+```
+
+| Layer | Mimic Python? | Notes |
+|---|---|---|
+| **`GraphStore` boundary** (`native_store.py`) | **Yes — exactly** | Drop-in replacement for `DuckDBGraphStore`; must pass existing store tests |
+| **C++ core** (`Graph`, `VectorIndex`, `snapshot`) | **No — optimize for the engine** | Flat `NodeData`, integer indices, batch `rebuild()` |
+| **`_delfos` nanobind exports** | **Minimal** | Only what `NativeGraphStore` needs; not a second public graph API |
+
+**Mimic at the boundary:** `GraphStore` method signatures, Pydantic schema field semantics, upsert/delete semantics, manifest shape.
+
+**Differ internally:** unified node struct, `NodeIdx`/`EdgeIdx`, CSR adjacency, separate HNSW index, snapshot files instead of SQL.
+
+**Out of scope for libdelfos:** query embedding, traversal orchestration, MCP tool logic, any product-level `reconstruct` implementation.
 
 ---
 
 ## 2. The Graph Schema (Source of Truth)
 
-The C++ types must map exactly to the Python schema in `delfos/schema/`. Here is the canonical specification:
+The C++ types must map exactly to the Python schema in `delfos/schema/`. Field semantics match; representation may differ (flat struct vs. discriminated union).
 
 ### 2.1 Enums
 
@@ -61,12 +96,17 @@ All enums are `uint8_t` backed.
 
 In Python there are three discriminated node types (`CueNode`, `TagNode`, `ContentNode`). In C++ we use a single struct with a `type` discriminator — fields irrelevant to a given type remain default-initialized.
 
+Timestamps are stored as **Unix epoch microseconds** (`int64_t`) in C++; the binding layer converts to/from Python `datetime`.
+
 ```cpp
 struct NodeData {
     // Identity & lifecycle (all nodes)
     std::string id;
     NodeType    type;
     NodeStatus  status = NodeStatus::Active;
+    int64_t     indexed_at = 0;       // required on all nodes
+    int64_t     deleted_at = 0;       // 0 = unset; set when status == Deleted
+    std::string deleted_by_commit;    // optional tombstone metadata
 
     // Provenance (SourcedNode: Cue and Content; optional on Tag)
     std::string source_file;
@@ -88,12 +128,16 @@ struct NodeData {
     std::string  docstring;
     std::string  body;
 
-    // Embedding (Cue nodes always; Content optionally)
+    // Embedding (Cue nodes usually; Content optionally)
     std::vector<float> embedding;
+    std::string embedding_model;          // required when embedding non-empty
+    std::string embedding_model_version;  // optional
 };
 ```
 
 ### 2.3 EdgeData
+
+Edges use integer indices internally. The Python `Edge` model uses string `source_id` / `target_id`; `NativeGraphStore` resolves those to `NodeIdx` before calling the C++ graph.
 
 ```cpp
 struct EdgeData {
@@ -102,6 +146,7 @@ struct EdgeData {
     EdgeType    type;
     std::string source_file;  // provenance (optional, nullable in Python)
     std::string git_sha;      // provenance (optional)
+    int64_t     indexed_at = 0;
 };
 ```
 
@@ -114,7 +159,7 @@ The Python extractor (`delfos/indexer/extractor.py`) produces IDs in these forma
 - Cue (error): `"cue:error:{source_file}::{sha1_slug_12}"`
 - Tag: `"tag:{category}:{value}"` (e.g. `"tag:language:python"`)
 
-These string IDs are the stable keys for upsert/lookup. The C++ graph must support O(1) lookup by string ID.
+These string IDs are the stable keys for upsert/lookup. The C++ graph must support O(1) lookup by string ID via `id_index_`, including while `dirty_ == true`.
 
 ### 2.5 Edge Semantics
 
@@ -166,8 +211,6 @@ graph.hpp          ← depends on types.hpp, node.hpp, edge.hpp
     ↑
 vector_index.hpp   ← depends on types.hpp, <usearch/index.hpp>
     ↑
-reconstruct.hpp    ← depends on graph.hpp, vector_index.hpp  (TOP)
-    ↑
 snapshot.hpp       ← depends on graph.hpp, vector_index.hpp, <flatbuffers>
     ↑
 delfos.hpp         ← umbrella, includes all above
@@ -185,7 +228,6 @@ Delfos/
 │   │   ├── edge.hpp              # EdgeData struct
 │   │   ├── graph.hpp             # CSR graph class
 │   │   ├── vector_index.hpp      # HNSW wrapper (usearch)
-│   │   ├── reconstruct.hpp       # DFS traversal engine
 │   │   └── snapshot.hpp          # FlatBuffers persistence
 │   │
 │   ├── flatbuffers/
@@ -194,23 +236,23 @@ Delfos/
 │   │
 │   ├── bench/
 │   │   ├── CMakeLists.txt
-│   │   └── bench_reconstruct.cpp
+│   │   ├── bench_graph.cpp
+│   │   └── bench_query.cpp       # neighbors + vector_search microbench
 │   │
 │   ├── tests/
 │   │   ├── CMakeLists.txt
 │   │   ├── test_graph.cpp
 │   │   ├── test_vector_index.cpp
-│   │   ├── test_reconstruct.cpp
 │   │   └── test_snapshot.cpp
 │   │
 │   └── bindings/
 │       ├── CMakeLists.txt
-│       └── py_delfos.cpp         # nanobind module
+│       └── py_delfos.cpp         # nanobind module (adapter surface only)
 │
 ├── delfos/
 │   └── store/
 │       ├── base.py               # UNCHANGED — GraphStore ABC
-│       ├── duckdb_store.py       # REMOVED in Phase 6
+│       ├── duckdb_store.py       # REMOVED in Phase 5
 │       └── native_store.py       # NEW — wrapper around _delfos
 │
 ├── CMakeLists.txt                # NEW — top-level
@@ -265,7 +307,9 @@ enum class Direction : uint8_t { Outgoing, Incoming };
 - A `NodeData` with `type == Tag` always has `category` and `value` populated.
 - A `NodeData` with `type == Content` always has `kind`, `memory_layer`, and `body` populated.
 - `id` is never empty.
+- `indexed_at` is always set on write.
 - `embedding` may be empty (no embedding yet) or have exactly `dim` floats.
+- When `embedding` is non-empty, `embedding_model` must be non-empty.
 
 ---
 
@@ -277,6 +321,8 @@ enum class Direction : uint8_t { Outgoing, Incoming };
 - `source` and `target` are valid `NodeIdx` values (< `graph.node_count()` after rebuild).
 - `type` is always set.
 - `source_file` / `git_sha` may be empty for cross-file edges (`RedirectsTo`).
+
+**Upsert key:** `(source, target, type)` — matches `GraphStore.upsert_edge`.
 
 ---
 
@@ -290,13 +336,16 @@ enum class Direction : uint8_t { Outgoing, Incoming };
 class Graph {
 public:
     // ── Mutation (NOT thread-safe) ──────────────────────────────────────
-    NodeIdx add_node(NodeData node);
-    EdgeIdx add_edge(EdgeData edge);
-    void    remove_nodes_for_file(std::string_view source_file);
-    void    rebuild();  // compact + build CSR + rebuild indices
+    NodeIdx upsert_node(NodeData node);   // replace by id if present
+    EdgeIdx upsert_edge(EdgeData edge);   // replace by (source, target, type)
+    void    delete_node(NodeIdx idx);     // hard-delete node + incident edges
+    void    delete_nodes_for_file(std::string_view source_file);
+    void    rebuild();                    // compact tombstones + build CSR
 
-    // ── Queries (thread-safe after rebuild()) ───────────────────────────
-    NodeIdx              find(std::string_view id) const;
+    // ── ID lookup (valid while dirty_) ──────────────────────────────────
+    NodeIdx find(std::string_view id) const;
+
+    // ── Adjacency queries (require dirty_ == false) ───────────────────────
     const NodeData&      node(NodeIdx idx) const;
     const EdgeData&      edge(EdgeIdx idx) const;
     std::span<const EdgeIdx> outgoing(NodeIdx idx) const;
@@ -308,6 +357,16 @@ public:
 };
 ```
 
+**Upsert semantics:**
+- `upsert_node`: if `id` exists, replace the slot in `nodes_` and update `id_index_` / `file_index_`. If new, append. Does **not** trigger `rebuild()`.
+- `upsert_edge`: if `(source, target, type)` exists, replace; else append. Does **not** trigger `rebuild()`.
+- Vector index updates are **not** handled here — `NativeGraphStore` calls `VectorIndex::insert` / `remove` alongside node upserts.
+
+**Delete semantics (match `DuckDBGraphStore`):**
+- `delete_node`: hard-remove the node and all incident edges immediately.
+- `delete_nodes_for_file`: hard-remove every node with matching `source_file` and every edge where `edge.source_file == file`, or either endpoint is a node being removed. Must take effect **immediately** so same-transaction re-index can upsert the same IDs without conflict.
+- Soft tombstones (`status == Deleted` via `upsert_node`) remain in storage until the next `rebuild()` compacts them.
+
 **Internal Data:**
 
 | Field | Type | Purpose |
@@ -318,12 +377,15 @@ public:
 | `out_edges_` | `vector<EdgeIdx>` | CSR column indices for outgoing edges |
 | `in_offset_` | `vector<uint32_t>` | CSR row pointers for incoming edges |
 | `in_edges_` | `vector<EdgeIdx>` | CSR column indices for incoming edges |
-| `id_index_` | `unordered_map<string, NodeIdx>` | String ID → node index |
+| `id_index_` | `unordered_map<string, NodeIdx>` | String ID → node index (kept current during mutation) |
 | `file_index_` | `unordered_map<string, vector<NodeIdx>>` | Source file → node indices |
-| `dirty_` | `bool` | True after mutation, asserted false in queries |
+| `edge_key_index_` | `unordered_map<EdgeKey, EdgeIdx>` | `(source, target, type)` → edge index |
+| `dirty_` | `bool` | True after mutation; false after `rebuild()` |
 
 **Preconditions:**
-- `outgoing()`, `incoming()`, `neighbors()`, `find()` require `dirty_ == false` (i.e., `rebuild()` was called after last mutation). Asserted in debug builds.
+- `find()` works regardless of `dirty_`.
+- `outgoing()`, `incoming()`, `neighbors()` require `dirty_ == false`. Asserted in debug builds.
+- During an open write transaction, callers may upsert/delete freely; adjacency is unavailable until `commit()` → `rebuild()`. This matches the indexer pattern (write a whole file, then commit).
 
 **`rebuild()` Algorithm:**
 1. Compact: remove nodes with `status == Deleted`, build `remap[old_idx] → new_idx`
@@ -331,7 +393,7 @@ public:
 3. Remove orphaned edges (where source or target mapped to `INVALID_NODE`)
 4. Build outgoing CSR: count per-source, prefix-sum, scatter
 5. Build incoming CSR: count per-target, prefix-sum, scatter
-6. Rebuild `id_index_` and `file_index_` from compacted `nodes_`
+6. Rebuild `id_index_`, `file_index_`, and `edge_key_index_` from compacted storage
 7. Set `dirty_ = false`
 
 ---
@@ -351,9 +413,10 @@ struct VectorHit {
 class VectorIndex {
 public:
     explicit VectorIndex(size_t dim, size_t capacity = 100'000);
-    void insert(NodeIdx node, std::span<const float> embedding);
+    void insert(NodeIdx node, NodeType type, std::span<const float> embedding);
     void remove(NodeIdx node);
-    std::vector<VectorHit> search(std::span<const float> query, size_t k) const;
+    std::vector<VectorHit> search(std::span<const float> query, size_t k,
+                                  NodeType* type_filter = nullptr) const;
     size_t size() const;
     size_t dim() const;
 
@@ -366,82 +429,19 @@ public:
 **Invariants:**
 - All embeddings must have exactly `dim` dimensions.
 - `search()` returns results sorted by descending `score`.
+- When `type_filter` is set, only nodes of that type are returned (implements `GraphStore.vector_search(..., node_type=...)`).
 - `search()` is thread-safe (usearch guarantees concurrent reads).
 - `insert()` / `remove()` are NOT thread-safe with concurrent reads.
 
 **Implementation Notes:**
 - USearch's `index_dense_t` with `metric_kind_t::cos_k` (cosine distance).
 - Maintain bidirectional map: `NodeIdx ↔ usearch_key` (uint64_t auto-incrementing).
+- Store `NodeType` per indexed node for post-filtering (or filter during insert by skipping non-matching types).
 - `save()`/`load()` use USearch's native `index.save()` / `index.load()`.
 
 ---
 
-### 4.6 `reconstruct.hpp`
-
-**Purpose:** The hot path. Vector search → DFS → collect content nodes. Entirely in C++.
-
-**Public Interface:**
-
-```cpp
-struct ReconstructOpts {
-    size_t budget = 3;   // max DFS depth
-    size_t top_k  = 5;   // number of seed cues from vector search
-};
-
-struct ReconstructResult {
-    std::vector<NodeIdx> content_nodes;  // ordered by discovery
-    size_t hops_used = 0;
-};
-
-ReconstructResult reconstruct(
-    const Graph& graph,
-    const VectorIndex& index,
-    std::span<const float> query_embedding,
-    const ReconstructOpts& opts = {}
-);
-```
-
-**Algorithm (pseudocode):**
-
-```
-function reconstruct(graph, index, query_embedding, opts):
-    hits ← index.search(query_embedding, opts.top_k)
-    visited ← ∅
-    content ← []
-    hops ← 0
-
-    for hit in hits:
-        stack ← [(hit.node, depth=0)]
-        while stack not empty:
-            (node, depth) ← stack.pop()
-            if node ∈ visited: continue
-            visited.add(node)
-            if depth > 0: hops += 1
-
-            if graph.node(node).type == Content AND status == Active:
-                content.append(node)
-
-            if depth < opts.budget:
-                for edge_idx in graph.outgoing(node):
-                    target ← graph.edge(edge_idx).target
-                    if target ∉ visited:
-                        stack.push((target, depth + 1))
-
-    return ReconstructResult{content, hops}
-```
-
-**Invariants:**
-- Graph must have `dirty_ == false` (rebuilt).
-- Each node is visited at most once.
-- Only Active ContentNodes appear in results.
-- DFS is iterative (explicit stack) — no recursion.
-- No exceptions thrown. No allocations in inner loop (pre-reserve stack/visited).
-
-**Performance Target:** < 1ms for 10K nodes / 50K edges, budget=3, top_k=5.
-
----
-
-### 4.7 `snapshot.hpp`
+### 4.6 `snapshot.hpp`
 
 **Purpose:** Serialize/deserialize the graph + vector index + checkpoint manifest to disk.
 
@@ -451,6 +451,7 @@ function reconstruct(graph, index, query_embedding, opts):
 struct ManifestEntry {
     std::string file_path;
     std::string git_sha;
+    int64_t     indexed_at = 0;
 };
 
 namespace snapshot {
@@ -495,6 +496,9 @@ table Node {
     id: string;
     type: NodeType;
     status: NodeStatus;
+    indexed_at: int64;
+    deleted_at: int64;
+    deleted_by_commit: string;
     source_file: string;
     git_sha: string;
     cue_type: CueType;
@@ -508,6 +512,8 @@ table Node {
     docstring: string;
     body: string;
     embedding: [float];
+    embedding_model: string;
+    embedding_model_version: string;
 }
 
 table Edge {
@@ -516,11 +522,13 @@ table Edge {
     type: EdgeType;
     source_file: string;
     git_sha: string;
+    indexed_at: int64;
 }
 
 table ManifestEntry {
     file_path: string;
     git_sha: string;
+    indexed_at: int64;
 }
 
 table Snapshot {
@@ -534,7 +542,7 @@ root_type Snapshot;
 
 ---
 
-### 4.8 `delfos.hpp` (Umbrella)
+### 4.7 `delfos.hpp` (Umbrella)
 
 ```cpp
 #pragma once
@@ -543,7 +551,6 @@ root_type Snapshot;
 #include "delfos/edge.hpp"
 #include "delfos/graph.hpp"
 #include "delfos/vector_index.hpp"
-#include "delfos/reconstruct.hpp"
 #include "delfos/snapshot.hpp"
 ```
 
@@ -553,35 +560,42 @@ root_type Snapshot;
 
 ### 5.1 nanobind Module (`bindings/py_delfos.cpp`)
 
-Exposes to Python:
-- All enums (as Python enums)
-- `Graph` class (add_node, add_edge, remove_nodes_for_file, rebuild, find, node, neighbors, node_count, edge_count)
-- `VectorIndex` class (insert, remove, search, size, dim, save, load)
-- `reconstruct()` function
-- `snapshot::save()` / `snapshot::load()`
+The `_delfos` module is an **implementation detail** of `NativeGraphStore`. Application code must not import it directly.
+
+Exposed surface (minimal):
+
+- Internal `Store` class bundling `Graph`, `VectorIndex`, manifest, and txn state — constructed with `(path, embedding_dim, embedding_model)`
+- Methods mirroring what the adapter needs (not a raw public `Graph` API for product code)
+- Enum values for conversion helpers
 - `INVALID_NODE` constant
 
-Node data is passed as Python dicts or dataclasses; returned as dicts. The binding layer converts between `NodeData` C++ struct and Python dict.
+The binding layer converts between `NodeData` / `EdgeData` and Pydantic models. All embedding-model and dimension validation happens in `NativeGraphStore` (same rules as `DuckDBGraphStore`).
+
+Optional: expose low-level `Graph` / `VectorIndex` behind a `DELFOS_DEBUG=1` build flag for C++ unit-test parity and microbenchmarks.
 
 ### 5.2 `native_store.py`
 
-Implements `GraphStore` ABC (from `delfos/store/base.py`). Maps each ABC method to C++ calls:
+Implements `GraphStore` ABC (from `delfos/store/base.py`). Maps each ABC method to `_delfos` calls:
 
-| ABC Method | C++ Calls |
+| ABC Method | Native Calls |
 |---|---|
-| `initialize()` | `snapshot::load()` if snapshot exists |
+| `initialize()` | `snapshot::load()` if snapshot exists; else empty graph |
 | `close()` | `snapshot::save()` if dirty |
-| `upsert_node(node)` | `graph.add_node(to_native(node))` + `vectors.insert()` if has embedding |
-| `upsert_edge(edge)` | `graph.add_edge(to_native(edge))` |
-| `delete_nodes_for_file(f)` | `graph.remove_nodes_for_file(f)` |
-| `get_node(id)` | `graph.find(id)` → `graph.node(idx)` → `to_pydantic()` |
-| `neighbors(id, ...)` | `graph.neighbors(...)` → convert results |
-| `vector_search(emb, k)` | `vectors.search(emb, k)` |
-| `record_indexed_file(...)` | append to internal manifest list |
-| `indexed_file_sha(f)` | lookup in manifest dict |
-| `begin_transaction()` | no-op (mutations are batched, `rebuild()` on commit) |
-| `commit()` | `graph.rebuild()` |
-| `rollback()` | discard pending mutations (re-load from last snapshot) |
+| `upsert_node(node)` | validate embedding model/dim → `upsert_node` + `vectors.insert/remove` |
+| `upsert_edge(edge)` | resolve string IDs → indices → `upsert_edge` |
+| `delete_node(node_id)` | `find` → `delete_node` + `vectors.remove` |
+| `delete_nodes_for_file(f)` | `delete_nodes_for_file(f)` + remove affected vectors |
+| `get_node(id)` | `find(id)` → `node(idx)` → `to_pydantic()` |
+| `neighbors(id, ...)` | `find` → `neighbors(...)` → convert (requires post-commit / rebuilt graph) |
+| `vector_search(emb, k, node_type=...)` | `vectors.search(emb, k, type_filter=...)` → map indices to `VectorSearchResult` |
+| `record_indexed_file(...)` | append/replace in internal manifest |
+| `indexed_file_sha(f)` | lookup in manifest |
+| `list_indexed_files()` | return full manifest as `IndexedFile` list |
+| `begin_transaction()` | mark txn open; adjacency queries should not run mid-txn |
+| `commit()` | `graph.rebuild()` + sync vector index keys if needed |
+| `rollback()` | reload from last committed snapshot state |
+
+**Parity requirement:** `NativeGraphStore` must pass the same test suite as `DuckDBGraphStore` (`tests/store/test_duckdb_store.py`, parametrized or duplicated as `test_native_store.py`).
 
 ### 5.3 `pyproject.toml` Changes
 
@@ -703,10 +717,9 @@ endif()
 
 | Test File | What It Covers |
 |---|---|
-| `test_graph.cpp` | add_node, add_edge, remove_nodes_for_file, rebuild, find, outgoing, incoming, neighbors, edge-type filtering, compaction correctness |
-| `test_vector_index.cpp` | insert, remove, search accuracy, empty index, duplicate insert |
-| `test_reconstruct.cpp` | DFS correctness, budget enforcement, deduplication, only-active-content filter, empty graph |
-| `test_snapshot.cpp` | save/load round-trip fidelity, crash safety (partial write doesn't corrupt) |
+| `test_graph.cpp` | upsert_node/edge, delete_node, delete_nodes_for_file, rebuild, find (while dirty), outgoing/incoming/neighbors (after rebuild), edge-type filtering, compaction, upsert replace semantics |
+| `test_vector_index.cpp` | insert, remove, search accuracy, node_type filter, empty index, duplicate insert |
+| `test_snapshot.cpp` | save/load round-trip fidelity, all schema fields including timestamps and embedding metadata, crash safety |
 
 ### 7.2 Benchmarks (nanobench)
 
@@ -715,13 +728,19 @@ endif()
 | `bench_graph_rebuild` | 10K nodes / 50K edges rebuild < 10ms |
 | `bench_neighbors` | Single `neighbors()` call < 1μs |
 | `bench_vector_search` | 50K vectors dim=1536, k=5 < 1ms |
-| `bench_reconstruct` | 10K nodes, budget=3, top_k=5 < 1ms |
+| `bench_query_path` | 100 sequential `neighbors()` + 1 `vector_search` < 1ms total |
 | `bench_snapshot_save` | 100K nodes serialize < 2s |
 | `bench_snapshot_load` | 100K nodes deserialize < 1s |
 
-### 7.3 Sanitizers
+### 7.3 Python Store Parity Tests
 
-All tests run under ASan + UBSan in CI. TSan added when concurrency paths are exercised.
+| Test File | What It Covers |
+|---|---|
+| `tests/store/test_native_store.py` | Same cases as `test_duckdb_store.py` against `NativeGraphStore` |
+
+### 7.4 Sanitizers
+
+All C++ tests run under ASan + UBSan in CI. TSan added when concurrency paths are exercised.
 
 ---
 
@@ -744,7 +763,7 @@ All tests run under ASan + UBSan in CI. TSan added when concurrency paths are ex
 └───────────────────────────────┘
 ```
 
-- After `rebuild()`, the `Graph` is immutable. All query methods are `const`.
+- After `rebuild()`, the `Graph` is immutable. All adjacency query methods are `const`.
 - The MCP server holds a `std::shared_ptr<const Graph>`. The indexer builds a completely new `Graph`, saves a snapshot, and does an atomic `std::atomic_store` of the new `shared_ptr`.
 - No mutexes on the read path. Zero contention.
 
@@ -755,18 +774,19 @@ All tests run under ASan + UBSan in CI. TSan added when concurrency paths are ex
 ### Constraints
 - **C++20 minimum.** Uses `std::span`, designated initializers, `std::erase_if`, `contains()`.
 - **clang++ only.** The project standardizes on LLVM (see toolchain skill). GCC compatibility is not a goal.
-- **No exceptions in the hot path.** `reconstruct()`, `graph.hpp` queries, `vector_index.hpp` search use asserts and return values.
-- **No dynamic allocation in DFS inner loop.** Pre-reserve `visited` set and stack.
+- **No exceptions in query hot paths.** `graph.hpp` adjacency queries and `vector_index.hpp` search use asserts and return values.
 - **`inline` on all function definitions.** Required for header-only ODR correctness.
-- **Every vector in the index uses the same embedding model.** Enforced by the Python layer (same as today).
+- **Every vector in the index uses the same embedding model.** Enforced by `NativeGraphStore` at write time (same as `DuckDBGraphStore`).
 
 ### Non-Goals (explicitly out of scope)
+- **Traversal orchestration** — no `reconstruct`, DFS, or MCP read-path logic in C++
 - Multi-model embedding support (one model per store, same as DuckDB backend)
-- Incremental CSR maintenance (too complex, batched rebuild is fine for write-rarely)
+- Incremental CSR maintenance (batched rebuild is fine for write-rarely)
 - GPU acceleration (future consideration, not now)
 - Custom allocator (use standard allocator; profile first)
 - Windows support (Linux-only for now; macOS is nice-to-have)
 - Python < 3.12 support
+- A second public Python graph API parallel to `GraphStore`
 
 ---
 
@@ -777,15 +797,17 @@ All tests run under ASan + UBSan in CI. TSan added when concurrency paths are ex
 **Files:** `types.hpp`, `node.hpp`, `edge.hpp`, `graph.hpp`, `CMakeLists.txt`, `CMakePresets.json`, `tests/test_graph.cpp`
 
 **Acceptance:**
-- All enums map 1:1 to `delfos/schema/enums.py`
-- `add_node` / `add_edge` / `remove_nodes_for_file` / `rebuild` / `find` / `outgoing` / `incoming` / `neighbors` work correctly
+- All enums and node/edge fields map 1:1 to `delfos/schema/`
+- `upsert_node` / `upsert_edge` replace-by-key semantics work correctly
+- `delete_node` and `delete_nodes_for_file` hard-delete immediately
+- `find()` works while `dirty_ == true`
+- `rebuild()` builds CSR; `outgoing` / `incoming` / `neighbors` work after rebuild
 - Edge-type filtering in `neighbors()` works
-- `rebuild()` correctly compacts deleted nodes and remaps edges
+- `rebuild()` compacts soft-deleted (`status == Deleted`) nodes
 - Compiles with `clang++ -std=c++20 -Wall -Wextra -Werror` — zero warnings
 - ASan + UBSan clean on all tests
-- Tests cover: empty graph, single node, 100+ nodes/edges, file deletion, rebuild correctness
 
-**PR scope:** Just the graph data structure. No vector index, no reconstruct, no persistence.
+**PR scope:** Graph data structure only. No vector index, no persistence, no Python bindings.
 
 ---
 
@@ -798,6 +820,7 @@ All tests run under ASan + UBSan in CI. TSan added when concurrency paths are ex
 **Acceptance:**
 - `VectorIndex(1536)` constructs successfully
 - `insert` / `remove` / `search` work correctly
+- `search(..., type_filter=Cue)` restricts results to cue nodes
 - Search returns results sorted by descending cosine similarity
 - Empty-index search returns empty vector (no crash)
 - Removing a non-existent node is a no-op (no crash)
@@ -806,75 +829,52 @@ All tests run under ASan + UBSan in CI. TSan added when concurrency paths are ex
 
 ---
 
-### Phase 3: Reconstruct
-
-**Files:** `reconstruct.hpp`, `tests/test_reconstruct.cpp`, `bench/bench_reconstruct.cpp`
-
-**Depends on:** Phase 1 + Phase 2
-
-**Acceptance:**
-- `reconstruct()` returns ContentNodes reachable within budget hops from HNSW hits
-- Budget=0 returns only direct CUE_OF targets that are ContentNodes
-- Budget=3 on a Cue→Tag→Content chain of depth 3 reaches the content
-- Deleted nodes are excluded from results
-- Each node visited at most once (no duplicates)
-- Empty graph returns empty result (no crash)
-- No HNSW hits (embedding doesn't match anything) returns empty result
-- Benchmark: 10K nodes / 50K edges, budget=3, top_k=5, p99 < 1ms
-- ASan + UBSan clean
-
----
-
-### Phase 4: Python Bindings
-
-**Files:** `bindings/py_delfos.cpp`, `bindings/CMakeLists.txt`, `delfos/store/native_store.py`, updated `pyproject.toml`
-
-**Depends on:** Phase 1 + 2 + 3
-
-**Acceptance:**
-- `import _delfos` succeeds after `pip install -e .`
-- All enums accessible from Python
-- `Graph()` can be created, mutated, rebuilt, queried from Python
-- `VectorIndex()` can be created, inserted into, searched from Python
-- `_delfos.reconstruct()` callable from Python, returns list of node indices
-- `NativeGraphStore` implements all `GraphStore` ABC methods
-- `Indexer(NativeGraphStore(...), embedder).index(repo)` succeeds end-to-end
-- `pyright --strict` passes on `native_store.py`
-- `uv build` produces a wheel
-
----
-
-### Phase 5: Persistence
+### Phase 3: Persistence
 
 **Files:** `snapshot.hpp`, `flatbuffers/delfos.fbs`, `flatbuffers/delfos_generated.h`, `tests/test_snapshot.cpp`
 
-**Depends on:** Phase 1 + 2 (can be parallel with Phase 3)
+**Depends on:** Phase 1 + 2
 
 **Acceptance:**
 - FlatBuffers schema compiles with `flatc --cpp`
 - `snapshot::save()` writes three files atomically (graph.fb, vectors.usearch, manifest.fb)
-- `snapshot::load()` populates Graph + VectorIndex + manifest from those files
-- Round-trip: build graph → save → load into fresh Graph → adjacency and search results are identical
+- `snapshot::load()` populates Graph + VectorIndex + manifest
+- Round-trip preserves all fields including `indexed_at`, tombstone metadata, and embedding model
 - Partial write (kill process mid-save) does not corrupt existing snapshot
 - Benchmark: 100K nodes save < 2s, load < 1s
 - ASan clean
 
 ---
 
-### Phase 6: Integration & DuckDB Removal
+### Phase 4: Python Bindings & NativeGraphStore
+
+**Files:** `bindings/py_delfos.cpp`, `bindings/CMakeLists.txt`, `delfos/store/native_store.py`, `tests/store/test_native_store.py`, updated `pyproject.toml`
+
+**Depends on:** Phase 1 + 2 + 3
+
+**Acceptance:**
+- `import _delfos` succeeds after `pip install -e .`
+- `NativeGraphStore` implements **all** `GraphStore` ABC methods
+- Passes store parity tests (same coverage as `test_duckdb_store.py`)
+- `Indexer(NativeGraphStore(...), embedder).index(repo)` succeeds end-to-end
+- `pyright --strict` passes on `native_store.py`
+- `uv build` produces a wheel
+
+---
+
+### Phase 5: Integration & DuckDB Removal
 
 **Files:** Remove `duckdb_store.py`, remove `duckdb` from `pyproject.toml`, update `CLAUDE.md`
 
-**Depends on:** Phase 4 + 5
+**Depends on:** Phase 4
 
 **Acceptance:**
 - `duckdb` gone from dependencies
 - `delfos/store/duckdb_store.py` deleted
 - Indexer + NativeGraphStore can index the Delfos repo itself end-to-end
-- `reconstruct()` returns relevant ContentNodes for a sample query
 - `pyright --strict` passes
 - `ruff check .` passes
-- End-to-end benchmark: index Delfos repo < 30s, reconstruct < 5ms
+- End-to-end benchmark: index Delfos repo < 30s; `vector_search` + 100× `neighbors` < 5ms
 
 ---
 
@@ -893,7 +893,7 @@ ctest --test-dir build/debug --output-on-failure
 # Run benchmarks (release build)
 cmake --preset release
 cmake --build build/release
-./build/release/libdelfos/bench/bench_reconstruct
+./build/release/libdelfos/bench/bench_query
 
 # Build Python wheel
 uv build
@@ -901,6 +901,9 @@ uv build
 # Lint + typecheck (Python side)
 uv run ruff check .
 uv run pyright
+
+# Store parity tests
+uv run pytest tests/store/test_native_store.py -v
 ```
 
 ---
@@ -928,8 +931,7 @@ All fetched at configure time. No system-level package installs needed beyond th
 | **Cue** | Entry-point node agents query by (function name, error message, concept) |
 | **Tag** | Categorical bridge node connecting cues to content (language, module path, etc.) |
 | **Content** | Terminal node containing actual code (function body, class, module) |
-| **Reconstruct** | The iterative DFS traversal from cue seeds to content nodes — the primary MCP tool |
-| **Budget** | Maximum DFS depth in a reconstruct traversal (default 3) |
+| **GraphStore** | The Python ABC all product code uses; libdelfos is its native backend |
 | **Snapshot** | Serialized graph + vectors + manifest on disk |
-| **Manifest** | Table of (file_path, git_sha) tracking which files have been indexed |
-| **Tombstone** | A node with `status == Deleted` — still in storage but excluded from results |
+| **Manifest** | Table of `(file_path, git_sha, indexed_at)` tracking which files have been indexed |
+| **Tombstone** | A node with `status == Deleted` — compacted on `rebuild()`, distinct from hard-delete |
