@@ -12,3 +12,9 @@ add_executable(test_vector_index test_vector_index.cpp)
 target_link_libraries(test_vector_index PRIVATE delfos_core Catch2::Catch2WithMain)
 target_compile_options(test_vector_index PRIVATE -Wall -Wextra -Werror)
 catch_discover_tests(test_vector_index)
+
+# ── Phase 3: snapshot tests ───────────────────────────────────────────────────
+add_executable(test_snapshot test_snapshot.cpp)
+target_link_libraries(test_snapshot PRIVATE delfos_core Catch2::Catch2WithMain)
+target_compile_options(test_snapshot PRIVATE -Wall -Wextra -Werror)
+catch_discover_tests(test_snapshot)

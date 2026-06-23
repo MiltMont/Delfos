@@ -1,0 +1,60 @@
+// FlatBuffers schema for libdelfos snapshot serialisation.
+// Compile with: flatc --cpp -o libdelfos/flatbuffers/ libdelfos/flatbuffers/delfos.fbs
+// The generated delfos_generated.h is committed to the repository.
+
+namespace delfos.fb;
+
+enum NodeType    : byte { Cue = 0, Tag, Content }
+enum EdgeType    : byte { CueOf = 0, TaggedWith, PartOfTopic, RedirectsTo }
+enum NodeStatus  : byte { Active = 0, Deleted }
+enum CueType     : byte { Symbol = 0, Concept, ErrorMessage }
+enum TagCategory : byte { ModulePath = 0, ArchLayer, PatternType, LangConstruct, Language }
+enum ContentKind : byte { Function = 0, Class, Module, Commit, Test }
+enum MemoryLayer : byte { Episodic = 0, Semantic, Topic }
+
+table Node {
+    id:                    string;
+    type:                  NodeType;
+    status:                NodeStatus;
+    indexed_at:            long;
+    deleted_at:            long;
+    deleted_by_commit:     string;
+    source_file:           string;
+    git_sha:               string;
+    cue_type:              CueType;
+    text:                  string;
+    category:              TagCategory;
+    value:                 string;
+    kind:                  ContentKind;
+    memory_layer:          MemoryLayer;
+    symbol_name:           string;
+    signature:             string;
+    docstring:             string;
+    body:                  string;
+    embedding:             [float];
+    embedding_model:       string;
+    embedding_model_version: string;
+}
+
+table Edge {
+    source:      uint;
+    target:      uint;
+    type:        EdgeType;
+    source_file: string;
+    git_sha:     string;
+    indexed_at:  long;
+}
+
+table ManifestEntry {
+    file_path:  string;
+    git_sha:    string;
+    indexed_at: long;
+}
+
+table Snapshot {
+    nodes:    [Node];
+    edges:    [Edge];
+    manifest: [ManifestEntry];
+}
+
+root_type Snapshot;
