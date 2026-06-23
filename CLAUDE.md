@@ -82,9 +82,15 @@ to `NativeGraphStore`.
 
 ### Provenance and stale-handling
 
-Every node and edge stores `source_file` and `git_sha`. The stale strategy is
-**delete-and-reindex**: when a file's git SHA changes, all nodes/edges from that
-file are hard-deleted and the file is re-processed from scratch.
+`CueNode`s and `ContentNode`s store `source_file` and `git_sha` (the `SourcedNode`
+base class makes these mandatory); edges carry the same provenance. `TagNode`s are
+the exception — they are cross-file bridges shared by many files, so their
+provenance is optional and defaults to `None`. The stale strategy is
+**delete-and-reindex**: when a file's git SHA changes, all sourced nodes/edges from
+that file are hard-deleted and the file is re-processed from scratch.
+`delete_nodes_for_file(source_file)` backs this; shared tags survive (their
+file-scoped `TAGGED_WITH` edges are what get dropped), and any resulting orphan tag
+is left in place.
 
 ### Crash recovery
 

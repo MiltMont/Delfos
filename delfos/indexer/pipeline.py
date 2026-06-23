@@ -74,12 +74,12 @@ def _module_path(relative_path: str) -> str:
     """Convert a posix relative path to a dotted module path.
 
     ``delfos/schema/nodes.py`` -> ``delfos.schema.nodes``;
-    ``delfos/__init__.py`` -> ``delfos``.
+    ``delfos/__init__.py`` -> ``delfos``; a top-level ``__init__.py`` -> ``<root>``.
     """
     parts = relative_path[: -len(".py")].split("/")
     if parts and parts[-1] == "__init__":
         parts = parts[:-1]
-    return ".".join(parts)
+    return ".".join(parts) if parts else "<root>"
 
 
 class Indexer:
