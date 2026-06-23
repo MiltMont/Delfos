@@ -295,7 +295,7 @@ struct NodeT : public ::flatbuffers::NativeTable {
   std::string signature{};
   std::string docstring{};
   std::string body{};
-  std::vector<float> embedding{};
+  std::vector<double> embedding{};
   std::string embedding_model{};
   std::string embedding_model_version{};
 };
@@ -380,8 +380,8 @@ struct Node FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *body() const {
     return GetPointer<const ::flatbuffers::String *>(VT_BODY);
   }
-  const ::flatbuffers::Vector<float> *embedding() const {
-    return GetPointer<const ::flatbuffers::Vector<float> *>(VT_EMBEDDING);
+  const ::flatbuffers::Vector<double> *embedding() const {
+    return GetPointer<const ::flatbuffers::Vector<double> *>(VT_EMBEDDING);
   }
   const ::flatbuffers::String *embedding_model() const {
     return GetPointer<const ::flatbuffers::String *>(VT_EMBEDDING_MODEL);
@@ -490,7 +490,7 @@ struct NodeBuilder {
   void add_body(::flatbuffers::Offset<::flatbuffers::String> body) {
     fbb_.AddOffset(Node::VT_BODY, body);
   }
-  void add_embedding(::flatbuffers::Offset<::flatbuffers::Vector<float>> embedding) {
+  void add_embedding(::flatbuffers::Offset<::flatbuffers::Vector<double>> embedding) {
     fbb_.AddOffset(Node::VT_EMBEDDING, embedding);
   }
   void add_embedding_model(::flatbuffers::Offset<::flatbuffers::String> embedding_model) {
@@ -530,7 +530,7 @@ inline ::flatbuffers::Offset<Node> CreateNode(
     ::flatbuffers::Offset<::flatbuffers::String> signature = 0,
     ::flatbuffers::Offset<::flatbuffers::String> docstring = 0,
     ::flatbuffers::Offset<::flatbuffers::String> body = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<float>> embedding = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<double>> embedding = 0,
     ::flatbuffers::Offset<::flatbuffers::String> embedding_model = 0,
     ::flatbuffers::Offset<::flatbuffers::String> embedding_model_version = 0) {
   NodeBuilder builder_(_fbb);
@@ -578,7 +578,7 @@ inline ::flatbuffers::Offset<Node> CreateNodeDirect(
     const char *signature = nullptr,
     const char *docstring = nullptr,
     const char *body = nullptr,
-    const std::vector<float> *embedding = nullptr,
+    const std::vector<double> *embedding = nullptr,
     const char *embedding_model = nullptr,
     const char *embedding_model_version = nullptr) {
   auto id__ = id ? _fbb.CreateString(id) : 0;
@@ -591,7 +591,7 @@ inline ::flatbuffers::Offset<Node> CreateNodeDirect(
   auto signature__ = signature ? _fbb.CreateString(signature) : 0;
   auto docstring__ = docstring ? _fbb.CreateString(docstring) : 0;
   auto body__ = body ? _fbb.CreateString(body) : 0;
-  auto embedding__ = embedding ? _fbb.CreateVector<float>(*embedding) : 0;
+  auto embedding__ = embedding ? _fbb.CreateVector<double>(*embedding) : 0;
   auto embedding_model__ = embedding_model ? _fbb.CreateString(embedding_model) : 0;
   auto embedding_model_version__ = embedding_model_version ? _fbb.CreateString(embedding_model_version) : 0;
   return delfos::fb::CreateNode(
