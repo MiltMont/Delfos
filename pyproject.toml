@@ -33,6 +33,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pyright]
 include = ["."]
-exclude = [".venv"]
+exclude = [".venv", "build"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
