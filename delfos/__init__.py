@@ -2,9 +2,9 @@
 
 Implements the MRAgent reconstruction model ("Memory is Reconstructed, Not
 Retrieved", arXiv 2606.06036) over a codebase, exposed to any MCP-compatible
-agent. This package currently provides the foundational layer: the
-Cue-Tag-Content schema (:mod:`delfos.schema`) and the storage abstraction
-(:mod:`delfos.store`).
+agent.  The package provides the Cue-Tag-Content schema (:mod:`delfos.schema`),
+the storage abstraction (:mod:`delfos.store`), and the indexing pipeline
+(:mod:`delfos.indexer`).
 """
 
 from delfos.indexer import Embedder, Indexer, IndexStats, OpenAIEmbedder
@@ -24,14 +24,13 @@ from delfos.schema import (
     TagCategory,
     TagNode,
 )
-from delfos.store import DuckDBGraphStore, GraphStore, IndexedFile, VectorSearchResult
+from delfos.store import GraphStore, IndexedFile, NativeGraphStore, VectorSearchResult
 
 __all__ = [
     "ContentKind",
     "ContentNode",
     "CueNode",
     "CueType",
-    "DuckDBGraphStore",
     "Direction",
     "Edge",
     "EdgeType",
@@ -41,6 +40,7 @@ __all__ = [
     "IndexedFile",
     "Indexer",
     "MemoryLayer",
+    "NativeGraphStore",
     "Node",
     "NodeStatus",
     "NodeType",
