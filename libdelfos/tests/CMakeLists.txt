@@ -1,0 +1,5 @@
+add_executable(libdelfos_graph_tests test_graph.cpp)
+target_link_libraries(libdelfos_graph_tests PRIVATE delfos_core Catch2::Catch2WithMain)
+
+include(Catch)
+catch_discover_tests(libdelfos_graph_tests)
