@@ -86,6 +86,18 @@ public:
 
     bool dirty() const noexcept { return dirty_; }
 
+    // ── Snapshot access (require dirty_ == false) ──────────────────────────
+    // After rebuild(), nodes_ and edges_ contain only live entries with
+    // contiguous 0-based indices — safe to iterate for serialisation.
+    std::span<const NodeData> nodes_view() const noexcept {
+        assert(!dirty_ && "nodes_view() called on dirty graph — call rebuild() first");
+        return nodes_;
+    }
+    std::span<const EdgeData> edges_view() const noexcept {
+        assert(!dirty_ && "edges_view() called on dirty graph — call rebuild() first");
+        return edges_;
+    }
+
 private:
     // ── Storage ───────────────────────────────────────────────────────────
     std::vector<NodeData> nodes_;
