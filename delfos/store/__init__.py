@@ -1,11 +1,11 @@
 """Storage abstraction and backends for the Cue-Tag-Content graph."""
 
 from .base import GraphStore, IndexedFile, VectorSearchResult
-from .duckdb_store import DuckDBGraphStore
+from .native_store import NativeGraphStore
 
 __all__ = [
-    "DuckDBGraphStore",
     "GraphStore",
     "IndexedFile",
+    "NativeGraphStore",
     "VectorSearchResult",
 ]
