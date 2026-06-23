@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync                 # install Python deps + dev tools
-uv pip install -e . --no-build-isolation  # build + install the _delfos C++ extension
+uv pip install -e .     # build + install the _delfos C++ extension (build isolation pulls scikit-build-core + nanobind)
 uv run ruff check .     # lint
 uv run ruff format .    # format
 uv run pyright          # type-check (strict mode)

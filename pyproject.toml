@@ -23,6 +23,9 @@ cmake.args = [
     "-DDELFOS_BUILD_TESTS=OFF",
     "-DDELFOS_BUILD_BENCH=OFF",
     "-DCMAKE_CXX_COMPILER=clang++",
+    # USearch pins cmake_minimum_required < 3.5, which CMake 4.x rejects.
+    # Allow it to configure under modern CMake.
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
 ]
 wheel.packages = ["delfos"]
 
