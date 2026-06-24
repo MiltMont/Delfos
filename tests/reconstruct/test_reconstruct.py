@@ -133,3 +133,32 @@ def test_reconstruct_returns_partial_on_planner_error(store: DuckDBGraphStore) -
     # First hop collected before the second call blew up.
     assert [c.id for c in result] == ["content-login"]
     assert planner.call_count == 2
+
+
+def test_reconstruct_backtracks_to_parent_via_stack(store: DuckDBGraphStore) -> None:
+    # Single seed: descend into content, dead-end there with a non-empty stack,
+    # and the walk must pop back to the parent cue (the stack branch, not the
+    # empty-stack seed-queue fallback) and resume.
+    seed = make_cue("cue-auth", "auth", embedding=vec(0.1))
+    login = make_content("content-login", "login")
+    edges = [edge("cue-auth", "content-login", EdgeType.CUE_OF)]
+    load(store, [seed, login], edges)
+
+    planner = FakeHopPlanner(
+        [
+            # Hop 1 at cue-auth: descend into content-login (pushes cue-auth on stack).
+            HopDecision(collect=[], descend_into="content-login"),
+            # Hop 2 at content-login: invalid descend, stack non-empty -> pop to cue-auth.
+            HopDecision(collect=[], descend_into="nope", stop=False),
+            # Hop 3 back at the popped parent cue-auth: collect and stop.
+            HopDecision(collect=[Collected(id="content-login", relevance=0.8)], stop=True),
+        ]
+    )
+    result = _service(store, planner).reconstruct("q", budget=5)
+
+    assert [c.id for c in result] == ["content-login"]
+    assert planner.call_count == 3
+    # Hop 3's current node is the popped parent cue, proving the stack backtrack
+    # path (seed_queue was empty, so this could only come from stack.pop()).
+    assert planner.requests[2].current.label == "auth"
+    assert planner.requests[2].current.node_kind == "cue"
