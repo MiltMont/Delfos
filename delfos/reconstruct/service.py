@@ -124,6 +124,12 @@ class ReconstructionService:
                 candidates=[self._to_summary(c) for c in candidates],
                 hops_remaining=budget_remaining,
             )
+            logger.debug(
+                "hop: current=%s candidates=%d budget_remaining=%d",
+                current.id,
+                len(candidates),
+                budget_remaining,
+            )
             try:
                 decision = self._planner.decide(request)
             except Exception:
@@ -133,6 +139,12 @@ class ReconstructionService:
                 )
                 break
             budget_remaining -= 1
+            logger.debug(
+                "hop decision: collect=%s descend_into=%s stop=%s",
+                [(c.id, c.relevance) for c in decision.collect],
+                decision.descend_into,
+                decision.stop,
+            )
 
             by_id = {c.id: c for c in candidates}
             self._collect(decision, by_id, result)

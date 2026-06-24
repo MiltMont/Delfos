@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+
+import pytest
+
 from delfos.reconstruct.planner import Collected, HopDecision
 from delfos.reconstruct.planners.fake import FakeHopPlanner
 from delfos.reconstruct.service import ReconstructionService
@@ -26,6 +30,23 @@ def _build_two_hop_graph(store: NativeGraphStore) -> None:
 def _service(store: NativeGraphStore, planner: FakeHopPlanner) -> ReconstructionService:
     embedder = FakeEmbedder({"q": vec(0.1)})
     return ReconstructionService(store, embedder, planner, seed_k=5)
+
+
+def test_reconstruct_emits_debug_logs_per_hop(
+    store: NativeGraphStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    _build_two_hop_graph(store)
+    planner = FakeHopPlanner(
+        [HopDecision(collect=[Collected(id="content-login", relevance=0.9)], stop=True)]
+    )
+    with caplog.at_level(logging.DEBUG, logger="delfos.reconstruct.service"):
+        _service(store, planner).reconstruct("q", budget=3)
+
+    messages = [r.getMessage() for r in caplog.records]
+    # The current node under consideration is logged each hop.
+    assert any("cue-auth" in m for m in messages), messages
+    # The planner's decision (what it collected) is logged.
+    assert any("content-login" in m for m in messages), messages
 
 
 def test_reconstruct_collects_from_first_hop(store: NativeGraphStore) -> None:
