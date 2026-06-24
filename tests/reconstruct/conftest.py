@@ -18,7 +18,7 @@ from delfos.schema import (
     TagCategory,
     TagNode,
 )
-from delfos.store.duckdb_store import DuckDBGraphStore
+from delfos.store.native_store import NativeGraphStore
 
 EMB_DIM = 8
 EMB_MODEL = "fake-v1"
@@ -88,14 +88,14 @@ def edge(source: str, target: str, edge_type: EdgeType) -> Edge:
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> Iterator[DuckDBGraphStore]:
-    s = DuckDBGraphStore(tmp_path / "t.duckdb", embedding_dim=EMB_DIM, embedding_model=EMB_MODEL)
+def store(tmp_path: Path) -> Iterator[NativeGraphStore]:
+    s = NativeGraphStore(tmp_path / "graph", embedding_dim=EMB_DIM, embedding_model=EMB_MODEL)
     s.initialize()
     yield s
     s.close()
 
 
-def load(store: DuckDBGraphStore, nodes: list[Node], edges: list[Edge]) -> None:
+def load(store: NativeGraphStore, nodes: list[Node], edges: list[Edge]) -> None:
     """Persist a fixture graph in one transaction."""
     with store.transaction():
         for node in nodes:

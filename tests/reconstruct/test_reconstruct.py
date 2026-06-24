@@ -4,12 +4,12 @@ from delfos.reconstruct.planner import Collected, HopDecision
 from delfos.reconstruct.planners.fake import FakeHopPlanner
 from delfos.reconstruct.service import ReconstructionService
 from delfos.schema import EdgeType
-from delfos.store.duckdb_store import DuckDBGraphStore
+from delfos.store.native_store import NativeGraphStore
 
 from .conftest import FakeEmbedder, edge, load, make_content, make_cue, vec
 
 
-def _build_two_hop_graph(store: DuckDBGraphStore) -> None:
+def _build_two_hop_graph(store: NativeGraphStore) -> None:
     # cue-auth -> content-login -> (sibling) cue-session -> content-token
     seed = make_cue("cue-auth", "auth", embedding=vec(0.1))
     login = make_content("content-login", "login")
@@ -23,12 +23,12 @@ def _build_two_hop_graph(store: DuckDBGraphStore) -> None:
     load(store, [seed, login, session, token], edges)
 
 
-def _service(store: DuckDBGraphStore, planner: FakeHopPlanner) -> ReconstructionService:
+def _service(store: NativeGraphStore, planner: FakeHopPlanner) -> ReconstructionService:
     embedder = FakeEmbedder({"q": vec(0.1)})
     return ReconstructionService(store, embedder, planner, seed_k=5)
 
 
-def test_reconstruct_collects_from_first_hop(store: DuckDBGraphStore) -> None:
+def test_reconstruct_collects_from_first_hop(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     planner = FakeHopPlanner(
         [HopDecision(collect=[Collected(id="content-login", relevance=0.9)], stop=True)]
@@ -39,7 +39,7 @@ def test_reconstruct_collects_from_first_hop(store: DuckDBGraphStore) -> None:
     assert planner.call_count == 1
 
 
-def test_reconstruct_descends_and_orders_by_relevance(store: DuckDBGraphStore) -> None:
+def test_reconstruct_descends_and_orders_by_relevance(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     planner = FakeHopPlanner(
         [
@@ -61,7 +61,7 @@ def test_reconstruct_descends_and_orders_by_relevance(store: DuckDBGraphStore) -
     assert planner.call_count == 2
 
 
-def test_reconstruct_stops_at_budget(store: DuckDBGraphStore) -> None:
+def test_reconstruct_stops_at_budget(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     # Always descend, never stop: only budget halts the walk.
     planner = FakeHopPlanner(
@@ -77,7 +77,7 @@ def test_reconstruct_stops_at_budget(store: DuckDBGraphStore) -> None:
     assert planner.call_count == 2
 
 
-def test_reconstruct_empty_when_no_seed_cues(store: DuckDBGraphStore) -> None:
+def test_reconstruct_empty_when_no_seed_cues(store: NativeGraphStore) -> None:
     # No cue carries an embedding, so vector_search returns nothing.
     load(store, [make_content("content-1", "login")], [])
     planner = FakeHopPlanner([])
@@ -87,7 +87,7 @@ def test_reconstruct_empty_when_no_seed_cues(store: DuckDBGraphStore) -> None:
     assert planner.call_count == 0
 
 
-def test_reconstruct_ignores_hallucinated_ids(store: DuckDBGraphStore) -> None:
+def test_reconstruct_ignores_hallucinated_ids(store: NativeGraphStore) -> None:
     # Two embedded seeds: when hop 1's descend_into is invalid and the stack is
     # empty, the walk falls back to the second seed and keeps going.
     seed1 = make_cue("cue-auth", "auth", embedding=vec(0.1))
@@ -117,7 +117,7 @@ def test_reconstruct_ignores_hallucinated_ids(store: DuckDBGraphStore) -> None:
     assert planner.call_count == 2
 
 
-def test_reconstruct_returns_partial_on_planner_error(store: DuckDBGraphStore) -> None:
+def test_reconstruct_returns_partial_on_planner_error(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     planner = FakeHopPlanner(
         [
@@ -135,7 +135,7 @@ def test_reconstruct_returns_partial_on_planner_error(store: DuckDBGraphStore) -
     assert planner.call_count == 2
 
 
-def test_reconstruct_backtracks_to_parent_via_stack(store: DuckDBGraphStore) -> None:
+def test_reconstruct_backtracks_to_parent_via_stack(store: NativeGraphStore) -> None:
     # Single seed: descend into content, dead-end there with a non-empty stack,
     # and the walk must pop back to the parent cue (the stack branch, not the
     # empty-stack seed-queue fallback) and resume.

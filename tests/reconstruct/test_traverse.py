@@ -3,16 +3,16 @@ from __future__ import annotations
 from delfos.reconstruct.planners.fake import FakeHopPlanner
 from delfos.reconstruct.service import ReconstructionService
 from delfos.schema import EdgeType, TagCategory
-from delfos.store.duckdb_store import DuckDBGraphStore
+from delfos.store.native_store import NativeGraphStore
 
 from .conftest import FakeEmbedder, edge, load, make_content, make_cue, make_tag
 
 
-def _service(store: DuckDBGraphStore) -> ReconstructionService:
+def _service(store: NativeGraphStore) -> ReconstructionService:
     return ReconstructionService(store, FakeEmbedder({}), FakeHopPlanner([]))
 
 
-def test_traverse_forward_follows_cue_of(store: DuckDBGraphStore) -> None:
+def test_traverse_forward_follows_cue_of(store: NativeGraphStore) -> None:
     cue = make_cue("cue-1", "auth")
     content = make_content("content-1", "login")
     load(store, [cue, content], [edge("cue-1", "content-1", EdgeType.CUE_OF)])
@@ -22,7 +22,7 @@ def test_traverse_forward_follows_cue_of(store: DuckDBGraphStore) -> None:
     assert [c.id for c in result] == ["content-1"]
 
 
-def test_traverse_forward_filters_by_tag(store: DuckDBGraphStore) -> None:
+def test_traverse_forward_filters_by_tag(store: NativeGraphStore) -> None:
     cue = make_cue("cue-1", "auth")
     py = make_content("content-py", "login")
     js = make_content("content-js", "logon")
@@ -41,7 +41,7 @@ def test_traverse_forward_filters_by_tag(store: DuckDBGraphStore) -> None:
     assert [c.id for c in result] == ["content-py"]
 
 
-def test_traverse_forward_dedups_across_cues(store: DuckDBGraphStore) -> None:
+def test_traverse_forward_dedups_across_cues(store: NativeGraphStore) -> None:
     cues = [make_cue("cue-1", "a"), make_cue("cue-2", "b")]
     content = make_content("content-1", "login")
     edges = [
@@ -55,7 +55,7 @@ def test_traverse_forward_dedups_across_cues(store: DuckDBGraphStore) -> None:
     assert [c.id for c in result] == ["content-1"]
 
 
-def test_traverse_forward_follows_redirect(store: DuckDBGraphStore) -> None:
+def test_traverse_forward_follows_redirect(store: NativeGraphStore) -> None:
     cue = make_cue("cue-1", "auth")
     old = make_content("content-old", "login")
     new = make_content("content-new", "login")
@@ -70,7 +70,7 @@ def test_traverse_forward_follows_redirect(store: DuckDBGraphStore) -> None:
     assert [c.id for c in result] == ["content-new"]
 
 
-def test_traverse_reverse_finds_sibling_cues(store: DuckDBGraphStore) -> None:
+def test_traverse_reverse_finds_sibling_cues(store: NativeGraphStore) -> None:
     content = make_content("content-1", "login")
     cue_a = make_cue("cue-a", "auth")
     cue_b = make_cue("cue-b", "signin")
@@ -85,7 +85,7 @@ def test_traverse_reverse_finds_sibling_cues(store: DuckDBGraphStore) -> None:
     assert {c.id for c in result} == {"cue-a", "cue-b"}
 
 
-def test_traverse_reverse_dedups(store: DuckDBGraphStore) -> None:
+def test_traverse_reverse_dedups(store: NativeGraphStore) -> None:
     c1 = make_content("content-1", "login")
     c2 = make_content("content-2", "logout")
     cue = make_cue("cue-a", "auth")
