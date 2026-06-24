@@ -75,3 +75,61 @@ def test_reconstruct_stops_at_budget(store: DuckDBGraphStore) -> None:
     _service(store, planner).reconstruct("q", budget=2)
 
     assert planner.call_count == 2
+
+
+def test_reconstruct_empty_when_no_seed_cues(store: DuckDBGraphStore) -> None:
+    # No cue carries an embedding, so vector_search returns nothing.
+    load(store, [make_content("content-1", "login")], [])
+    planner = FakeHopPlanner([])
+    result = _service(store, planner).reconstruct("q", budget=3)
+
+    assert result == []
+    assert planner.call_count == 0
+
+
+def test_reconstruct_ignores_hallucinated_ids(store: DuckDBGraphStore) -> None:
+    # Two embedded seeds: when hop 1's descend_into is invalid and the stack is
+    # empty, the walk falls back to the second seed and keeps going.
+    seed1 = make_cue("cue-auth", "auth", embedding=vec(0.1))
+    seed2 = make_cue("cue-extra", "extra", embedding=vec(0.11))
+    login = make_content("content-login", "login")
+    edges = [
+        edge("cue-auth", "content-login", EdgeType.CUE_OF),
+        edge("cue-extra", "content-login", EdgeType.CUE_OF),
+    ]
+    load(store, [seed1, seed2, login], edges)
+
+    planner = FakeHopPlanner(
+        [
+            HopDecision(
+                collect=[Collected(id="does-not-exist", relevance=0.9)],
+                descend_into="also-fake",
+                stop=False,
+            ),
+            HopDecision(collect=[Collected(id="content-login", relevance=0.4)], stop=True),
+        ]
+    )
+    result = _service(store, planner).reconstruct("q", budget=3)
+
+    # Hallucinated collect dropped; invalid descend_into forced a fallback to the
+    # second seed, where a real collect succeeded.
+    assert [c.id for c in result] == ["content-login"]
+    assert planner.call_count == 2
+
+
+def test_reconstruct_returns_partial_on_planner_error(store: DuckDBGraphStore) -> None:
+    _build_two_hop_graph(store)
+    planner = FakeHopPlanner(
+        [
+            HopDecision(
+                collect=[Collected(id="content-login", relevance=0.7)],
+                descend_into="content-login",
+            )
+        ],
+        error_after=1,  # 2nd call raises
+    )
+    result = _service(store, planner).reconstruct("q", budget=3)
+
+    # First hop collected before the second call blew up.
+    assert [c.id for c in result] == ["content-login"]
+    assert planner.call_count == 2
