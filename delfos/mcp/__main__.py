@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-from delfos.mcp.config import build_embedder, build_store, check_model_match, config_from_env
+from delfos.config import build_embedder, build_store, check_model_match, config_from_env
 from delfos.mcp.server import build_server
 from delfos.reconstruct import ReconstructionService
 
