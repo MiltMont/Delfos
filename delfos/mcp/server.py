@@ -37,7 +37,14 @@ def _to_tag_filters(pairs: list[tuple[str, str]]) -> list[TagFilter]:
 
 
 def _search(service: ReconstructionService, query: str, k: int = 5) -> list[NodeSummary]:
-    return [cue_to_summary(c) for c in service.search(query, k)]
+    try:
+        cues = service.search(query, k)
+    except Exception as exc:  # noqa: BLE001 - tool boundary: translate endpoint failures into actionable errors
+        raise RuntimeError(
+            "search failed: could not reach the embedding endpoint. "
+            "Check the embedding endpoint is up and the model is pulled."
+        ) from exc
+    return [cue_to_summary(c) for c in cues]
 
 
 def _traverse_forward(

@@ -11,6 +11,7 @@ from .conftest import (
     edge,
     load,
     make_content,
+    make_cue,
     make_tag,
 )
 
@@ -47,6 +48,13 @@ def test_content_tags_renders_sorted_category_value(store: NativeGraphStore) -> 
     svc = _service(store)
 
     assert svc.content_tags("c1") == ["language=python"]
+
+
+def test_fetch_skips_non_content_node(store: NativeGraphStore) -> None:
+    cue = make_cue("cue-1", "auth")
+    load(store, [cue], [])
+    svc = _service(store)
+    assert svc.fetch(["cue-1"]) == []
 
 
 def test_reconstruct_without_planner_raises(store: NativeGraphStore) -> None:

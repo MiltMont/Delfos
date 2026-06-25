@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+
+import pytest
 from mcp.server.fastmcp import FastMCP
 
 from delfos.mcp.server import (
@@ -10,9 +13,12 @@ from delfos.mcp.server import (
     build_server,
     reconstruct_prompt,
 )
+from delfos.reconstruct import ReconstructionService
 from delfos.schema import EdgeType, TagCategory
 from delfos.store.native_store import NativeGraphStore
 from tests.reconstruct.conftest import (
+    EMB_DIM,
+    EMB_MODEL,
     edge,
     load,
     make_content,
@@ -21,6 +27,25 @@ from tests.reconstruct.conftest import (
 )
 
 from .conftest import make_service, vec
+
+
+class BoomEmbedder:
+    """Embedder that always raises on embed — simulates a dead endpoint."""
+
+    @property
+    def model(self) -> str:
+        return EMB_MODEL
+
+    @property
+    def model_version(self) -> str | None:
+        return None
+
+    @property
+    def dimensions(self) -> int:
+        return EMB_DIM
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        raise ConnectionError("endpoint unreachable")
 
 
 def _seed(store: NativeGraphStore) -> None:
@@ -48,6 +73,14 @@ def test_search_returns_cue_summaries(store: NativeGraphStore) -> None:
     assert out[0].label == "auth"
 
 
+def test_search_translates_embedder_failure(store: NativeGraphStore) -> None:
+    _seed(store)
+    svc = ReconstructionService(store, BoomEmbedder())
+
+    with pytest.raises(RuntimeError, match="embedding endpoint"):
+        _search(svc, "q", k=5)
+
+
 def test_traverse_forward_returns_content_summaries_with_tags(store: NativeGraphStore) -> None:
     _seed(store)
     svc = make_service(store, vec(0.10))
@@ -67,6 +100,7 @@ def test_traverse_forward_unknown_tag_category_errors(store: NativeGraphStore) -
         _traverse_forward(svc, ["cue-1"], [("not_a_category", "x")])
     except ValueError as exc:
         assert "not_a_category" in str(exc)
+        assert "language" in str(exc)
     else:  # pragma: no cover - must raise
         raise AssertionError("expected ValueError for unknown tag category")
 
@@ -105,3 +139,7 @@ def test_build_server_registers_tools_and_prompt(store: NativeGraphStore) -> Non
     svc = make_service(store, vec(0.10))
     server = build_server(svc)
     assert isinstance(server, FastMCP)
+    tool_names = {t.name for t in asyncio.run(server.list_tools())}
+    assert tool_names == {"search", "traverse_forward", "traverse_reverse", "fetch"}
+    prompt_names = {p.name for p in asyncio.run(server.list_prompts())}
+    assert "reconstruct" in prompt_names
