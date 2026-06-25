@@ -39,7 +39,7 @@ class ReconstructionService:
         self,
         store: GraphStore,
         embedder: Embedder,
-        planner: HopPlanner,
+        planner: HopPlanner | None = None,
         *,
         seed_k: int = 5,
     ) -> None:
@@ -104,6 +104,9 @@ class ReconstructionService:
         caps the total number of planner calls. Returns content ordered by
         planner-assigned relevance (descending; ties keep discovery order).
         """
+        planner = self._planner
+        if planner is None:
+            raise RuntimeError("reconstruct requires a planner; none was configured")
         wanted = set(tag_filters) if tag_filters else None
         seeds = self.search(query, k=self._seed_k)
         if not seeds:
@@ -131,7 +134,7 @@ class ReconstructionService:
                 budget_remaining,
             )
             try:
-                decision = self._planner.decide(request)
+                decision = planner.decide(request)
             except Exception:
                 logger.warning(
                     "hop planner failed; returning partial reconstruction",
@@ -167,6 +170,19 @@ class ReconstructionService:
 
         ordered = sorted(result.values(), key=lambda pair: pair[1], reverse=True)
         return [content for content, _ in ordered]
+
+    def fetch(self, ids: Sequence[str]) -> list[ContentNode]:
+        """Resolve ids to ACTIVE content nodes, skipping unknown/non-content/deleted."""
+        out: list[ContentNode] = []
+        for node_id in ids:
+            node = self._store.get_node(node_id)
+            if isinstance(node, ContentNode) and node.status == NodeStatus.ACTIVE:
+                out.append(node)
+        return out
+
+    def content_tags(self, content_id: str) -> list[str]:
+        """Tags on a content node as sorted ``"category=value"`` strings."""
+        return sorted(f"{cat.value}={val}" for cat, val in self._content_tags(content_id))
 
     def _to_summary(self, node: Node) -> CandidateSummary:
         """Build the planner-facing summary, attaching tags for content."""
