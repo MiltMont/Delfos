@@ -50,8 +50,8 @@ Smaller policy decisions:
 
 ## Architecture & module layout
 
-A read-path service layer that sits on top of `GraphStore` and **never touches
-DuckDB directly** (same boundary as the indexer). It depends on the existing
+A read-path service layer that sits on top of `GraphStore` and **never bypasses
+the store interface** (same boundary as the indexer). It depends on the existing
 `Embedder` (to embed the query) and a new `HopPlanner` abstraction.
 
 ```
@@ -173,7 +173,7 @@ traversal loop.
 ## Testing (no network, fully deterministic)
 
 - **Primitives** (`search` / `traverse_forward` / `traverse_reverse`) → run
-  against an in-memory `DuckDBGraphStore` seeded with a small fixture graph;
+  against an in-memory `NativeGraphStore` seeded with a small fixture graph;
   assert exact node sets. The `Embedder` is stubbed with a fixed query vector.
 - **`reconstruct`** → inject `FakeHopPlanner` with **scripted decisions**;
   assert: traversal order, budget enforcement (≤ N planner calls), dedup,

@@ -1,8 +1,4 @@
-"""Store parity tests for NativeGraphStore.
-
-These cover the same cases as test_duckdb_store.py, exercised against
-NativeGraphStore so we can verify it is a drop-in replacement.
-"""
+"""Store tests for NativeGraphStore."""
 
 from __future__ import annotations
 
@@ -46,7 +42,7 @@ def store(tmp_path: Path) -> Iterator[NativeGraphStore]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers (mirrors test_duckdb_store.py)
+# Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 

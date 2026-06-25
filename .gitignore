@@ -19,8 +19,6 @@ venv/
 .pytest_cache/
 
 # Databases / local artifacts
-*.duckdb
-*.duckdb.wal
 *.sqlite
 *.sqlite3
 *.db

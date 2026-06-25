@@ -4,8 +4,9 @@
 
 Delfos is an early-stage **Python library** (graph-memory engine for codebases),
 not a runnable service yet. There is no MCP server, CLI, or web UI — the `delfos`
-package currently provides the schema (`delfos.schema`), the DuckDB-backed graph
-store (`delfos.store`), and the indexer pipeline (`delfos.indexer`). Note the
+package currently provides the schema (`delfos.schema`), the native graph store
+(`delfos.store`, backed by `libdelfos`), and the indexer pipeline
+(`delfos.indexer`). Note the
 `CLAUDE.md`/`README.md` claim the store/indexer are unimplemented stubs; that is
 out of date — both are fully implemented and covered by tests under `tests/`.
 
@@ -32,13 +33,14 @@ Non-obvious gotchas:
 - All external C++ deps (USearch, FlatBuffers, nanobind, Catch2, nanobench) are
   pulled via CMake `FetchContent` at **configure time** — the first configure
   needs network access to GitHub and is slower while it clones/builds them.
-- The C++ library source (`libdelfos/`, top-level `CMakeLists.txt`,
-  `CMakePresets.json`) does not exist in the repo yet; the toolchain is ready but
-  there is nothing to build until the plan's phases are implemented.
+- The C++ library (`libdelfos/`, top-level `CMakeLists.txt`,
+  `CMakePresets.json`) is implemented; run `uv pip install -e .` to build the
+  `delfos._delfos` extension, or use the standalone C++ flow in
+  `docs/libdelfos-plan.md` section 11.
 
 ### Running it end-to-end
 - There is no server entrypoint. To exercise the core flow, drive the library
-  directly: build a `DuckDBGraphStore`, wrap it in `Indexer` with an `Embedder`,
+  directly: build a `NativeGraphStore`, wrap it in `Indexer` with an `Embedder`,
   and call `indexer.index(<repo_path>)`, then query via `store.vector_search(...)`
   and `store.neighbors(...)`.
 - The default `OpenAIEmbedder` needs `OPENAI_API_KEY`. For local/offline runs,

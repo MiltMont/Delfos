@@ -1,8 +1,7 @@
 """NativeGraphStore — GraphStore backed by the libdelfos C++ engine.
 
-Drop-in replacement for DuckDBGraphStore.  All product code (indexer, MCP
-tools) must talk through the GraphStore ABC; this module is an implementation
-detail.
+All product code (indexer, MCP tools) must talk through the GraphStore ABC;
+this module is the concrete backend implementation.
 
 The _delfos extension module is built via scikit-build-core (pip install -e .)
 and lives at delfos/_delfos.so.
@@ -104,7 +103,7 @@ def _dt_to_us(dt: datetime) -> int:
 
 
 def _us_to_dt(us: int) -> datetime:
-    # Return a naive datetime (no tzinfo) matching DuckDB's TIMESTAMP behaviour.
+    # Return a naive datetime (no tzinfo) for consistent store round-trips.
     return datetime.fromtimestamp(us / 1_000_000, tz=UTC).replace(tzinfo=None)
 
 

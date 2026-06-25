@@ -1,6 +1,8 @@
 # libdelfos — Full Implementation Plan
 
-> This document is the single source of truth for implementing `libdelfos`, the C++ graph core that replaces DuckDB in Delfos. Any agent or developer reading this should have complete context to implement the library without additional information.
+> This document is the implementation plan for `libdelfos`, the C++ graph core
+> that replaced DuckDB in Delfos (Phase 5 complete). It remains the reference for
+> the C++ engine architecture.
 
 ---
 
@@ -18,12 +20,12 @@ delfos/
 ├── indexer/         # AST parser → extractor → embedder → pipeline
 ├── store/
 │   ├── base.py      # GraphStore ABC (the interface everything talks to)
-│   └── duckdb_store.py  # Current backend (DuckDB, brute-force cosine)
+│   └── native_store.py  # NativeGraphStore (libdelfos C++ backend)
 ```
 
 The indexer parses Python files, extracts a Cue-Tag-Content graph, embeds cue nodes via OpenAI, and persists everything through the `GraphStore` ABC.
 
-### Why replace DuckDB with C++?
+### Why libdelfos replaced DuckDB
 
 The read and write hot paths are **`GraphStore` primitives** — especially `vector_search`, `neighbors`, and `get_node`. In DuckDB, each call costs a full SQL round-trip (parse/plan/execute/deserialize). In a native C++ CSR graph, adjacency is a pointer dereference and vector search uses HNSW in-process. Measured difference for a 10K-file repo: **~50–200ms per DuckDB hop vs. < 1μs per C++ neighbor lookup** and **< 1ms for k-NN search**.
 
@@ -61,7 +63,7 @@ libdelfos is a **storage engine**, not a port of the Python product API.
 
 | Layer | Mimic Python? | Notes |
 |---|---|---|
-| **`GraphStore` boundary** (`native_store.py`) | **Yes — exactly** | Drop-in replacement for `DuckDBGraphStore`; must pass existing store tests |
+| **`GraphStore` boundary** (`native_store.py`) | **Yes — exactly** | Implements the `GraphStore` ABC; covered by `tests/store/test_native_store.py` |
 | **C++ core** (`Graph`, `VectorIndex`, `snapshot`) | **No — optimize for the engine** | Flat `NodeData`, integer indices, batch `rebuild()` |
 | **`_delfos` nanobind exports** | **Minimal** | Only what `NativeGraphStore` needs; not a second public graph API |
 
@@ -252,8 +254,7 @@ Delfos/
 ├── delfos/
 │   └── store/
 │       ├── base.py               # UNCHANGED — GraphStore ABC
-│       ├── duckdb_store.py       # REMOVED in Phase 5
-│       └── native_store.py       # NEW — wrapper around _delfos
+│       └── native_store.py       # NativeGraphStore wrapper around _delfos
 │
 ├── CMakeLists.txt                # NEW — top-level
 ├── CMakePresets.json             # NEW — debug/profile/release presets
@@ -362,7 +363,7 @@ public:
 - `upsert_edge`: if `(source, target, type)` exists, replace; else append. Does **not** trigger `rebuild()`.
 - Vector index updates are **not** handled here — `NativeGraphStore` calls `VectorIndex::insert` / `remove` alongside node upserts.
 
-**Delete semantics (match `DuckDBGraphStore`):**
+**Delete semantics:**
 - `delete_node`: hard-remove the node and all incident edges immediately.
 - `delete_nodes_for_file`: hard-remove every node with matching `source_file` and every edge where `edge.source_file == file`, or either endpoint is a node being removed. Must take effect **immediately** so same-transaction re-index can upsert the same IDs without conflict.
 - Soft tombstones (`status == Deleted` via `upsert_node`) remain in storage until the next `rebuild()` compacts them.
@@ -569,7 +570,7 @@ Exposed surface (minimal):
 - Enum values for conversion helpers
 - `INVALID_NODE` constant
 
-The binding layer converts between `NodeData` / `EdgeData` and Pydantic models. All embedding-model and dimension validation happens in `NativeGraphStore` (same rules as `DuckDBGraphStore`).
+The binding layer converts between `NodeData` / `EdgeData` and Pydantic models. All embedding-model and dimension validation happens in `NativeGraphStore`.
 
 Optional: expose low-level `Graph` / `VectorIndex` behind a `DELFOS_DEBUG=1` build flag for C++ unit-test parity and microbenchmarks.
 
@@ -595,7 +596,7 @@ Implements `GraphStore` ABC (from `delfos/store/base.py`). Maps each ABC method 
 | `commit()` | `graph.rebuild()` + sync vector index keys if needed |
 | `rollback()` | reload from last committed snapshot state |
 
-**Parity requirement:** `NativeGraphStore` must pass the same test suite as `DuckDBGraphStore` (`tests/store/test_duckdb_store.py`, parametrized or duplicated as `test_native_store.py`).
+**Test coverage:** `tests/store/test_native_store.py` exercises all `GraphStore` ABC methods against `NativeGraphStore`.
 
 ### 5.3 `pyproject.toml` Changes
 
@@ -736,7 +737,7 @@ endif()
 
 | Test File | What It Covers |
 |---|---|
-| `tests/store/test_native_store.py` | Same cases as `test_duckdb_store.py` against `NativeGraphStore` |
+| `tests/store/test_native_store.py` | All `GraphStore` ABC methods against `NativeGraphStore` |
 
 ### 7.4 Sanitizers
 
@@ -776,11 +777,11 @@ All C++ tests run under ASan + UBSan in CI. TSan added when concurrency paths ar
 - **clang++ only.** The project standardizes on LLVM (see toolchain skill). GCC compatibility is not a goal.
 - **No exceptions in query hot paths.** `graph.hpp` adjacency queries and `vector_index.hpp` search use asserts and return values.
 - **`inline` on all function definitions.** Required for header-only ODR correctness.
-- **Every vector in the index uses the same embedding model.** Enforced by `NativeGraphStore` at write time (same as `DuckDBGraphStore`).
+- **Every vector in the index uses the same embedding model.** Enforced by `NativeGraphStore` at write time.
 
 ### Non-Goals (explicitly out of scope)
 - **Traversal orchestration** — no `reconstruct`, DFS, or MCP read-path logic in C++
-- Multi-model embedding support (one model per store, same as DuckDB backend)
+- Multi-model embedding support (one model per store)
 - Incremental CSR maintenance (batched rebuild is fine for write-rarely)
 - GPU acceleration (future consideration, not now)
 - Custom allocator (use standard allocator; profile first)
@@ -855,20 +856,20 @@ All C++ tests run under ASan + UBSan in CI. TSan added when concurrency paths ar
 **Acceptance:**
 - `import _delfos` succeeds after `pip install -e .`
 - `NativeGraphStore` implements **all** `GraphStore` ABC methods
-- Passes store parity tests (same coverage as `test_duckdb_store.py`)
+- Passes store tests in `tests/store/test_native_store.py`
 - `Indexer(NativeGraphStore(...), embedder).index(repo)` succeeds end-to-end
 - `pyright --strict` passes on `native_store.py`
 - `uv build` produces a wheel
 
 ---
 
-### Phase 5: Integration & DuckDB Removal
+### Phase 5: Integration & DuckDB Removal (complete)
 
-**Files:** Remove `duckdb_store.py`, remove `duckdb` from `pyproject.toml`, update `CLAUDE.md`
+**Files:** Removed `duckdb_store.py`, removed `duckdb` from `pyproject.toml`, updated `CLAUDE.md`
 
 **Depends on:** Phase 4
 
-**Acceptance:**
+**Acceptance (met):**
 - `duckdb` gone from dependencies
 - `delfos/store/duckdb_store.py` deleted
 - Indexer + NativeGraphStore can index the Delfos repo itself end-to-end

@@ -6,7 +6,7 @@
 
 **Architecture:** A new `delfos/reconstruct/` package exposes `ReconstructionService`, constructed with a `GraphStore`, an `Embedder`, and a provider-agnostic `HopPlanner`. The primitives are pure graph operations; `reconstruct` runs a sequential DFS where an LLM (`HopPlanner`) decides, at each hop, which neighbors to collect and which single neighbor to descend into, bounded by a budget on total planner calls. Tests inject a `FakeHopPlanner` and a fake embedder, so the whole layer is deterministic and offline.
 
-**Tech Stack:** Python 3.12, Pydantic v2, DuckDB (via existing `DuckDBGraphStore`), pytest, pyright (strict), ruff.
+**Tech Stack:** Python 3.12, Pydantic v2, `NativeGraphStore` (libdelfos C++ backend), pytest, pyright (strict), ruff.
 
 ## Global Constraints
 
@@ -14,7 +14,7 @@
 - Pyright **strict mode** — all new code fully typed, no implicit `Any`.
 - All Pydantic models set `model_config = ConfigDict(extra="forbid")`.
 - Ruff lint select = `E, F, I, UP, B`; line length 100. Run `uv run ruff format .` and `uv run ruff check .`.
-- **Never touch DuckDB directly** — every data access goes through the `GraphStore` interface.
+- **Never bypass `GraphStore`** — every data access goes through the store interface.
 - `status=ACTIVE` nodes only in the read path; follow a single `REDIRECTS_TO` edge transparently when present.
 - Type-check command: `uv run pyright`. Test command: `uv run pytest`.
 
@@ -471,7 +471,7 @@ from delfos.schema import (
     TagCategory,
     TagNode,
 )
-from delfos.store.duckdb_store import DuckDBGraphStore
+from delfos.store.native_store import NativeGraphStore
 
 EMB_DIM = 8
 EMB_MODEL = "fake-v1"
@@ -533,16 +533,16 @@ def edge(source: str, target: str, edge_type: EdgeType) -> Edge:
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> Iterator[DuckDBGraphStore]:
-    s = DuckDBGraphStore(
-        tmp_path / "t.duckdb", embedding_dim=EMB_DIM, embedding_model=EMB_MODEL
+def store(tmp_path: Path) -> Iterator[NativeGraphStore]:
+    s = NativeGraphStore(
+        tmp_path / "graph", embedding_dim=EMB_DIM, embedding_model=EMB_MODEL
     )
     s.initialize()
     yield s
     s.close()
 
 
-def load(store: DuckDBGraphStore, nodes: list[Node], edges: list[Edge]) -> None:
+def load(store: NativeGraphStore, nodes: list[Node], edges: list[Edge]) -> None:
     """Persist a fixture graph in one transaction."""
     with store.transaction():
         for node in nodes:
@@ -592,12 +592,12 @@ from __future__ import annotations
 
 from delfos.reconstruct.planners.fake import FakeHopPlanner
 from delfos.reconstruct.service import ReconstructionService
-from delfos.store.duckdb_store import DuckDBGraphStore
+from delfos.store.native_store import NativeGraphStore
 
 from .conftest import FakeEmbedder, load, make_cue, vec
 
 
-def test_search_returns_nearest_cues(store: DuckDBGraphStore) -> None:
+def test_search_returns_nearest_cues(store: NativeGraphStore) -> None:
     near = make_cue("cue-near", "auth", embedding=vec(0.10))
     far = make_cue("cue-far", "billing", embedding=vec(9.0))
     load(store, [near, far], [])
@@ -610,7 +610,7 @@ def test_search_returns_nearest_cues(store: DuckDBGraphStore) -> None:
     assert [c.id for c in hits] == ["cue-near", "cue-far"]
 
 
-def test_search_only_returns_cue_nodes(store: DuckDBGraphStore) -> None:
+def test_search_only_returns_cue_nodes(store: NativeGraphStore) -> None:
     near = make_cue("cue-near", "auth", embedding=vec(0.10))
     load(store, [near], [])
     embedder = FakeEmbedder({"q": vec(0.10)})
@@ -719,16 +719,16 @@ from __future__ import annotations
 from delfos.reconstruct.planners.fake import FakeHopPlanner
 from delfos.reconstruct.service import ReconstructionService
 from delfos.schema import EdgeType, TagCategory
-from delfos.store.duckdb_store import DuckDBGraphStore
+from delfos.store.native_store import NativeGraphStore
 
 from .conftest import FakeEmbedder, edge, load, make_content, make_cue, make_tag
 
 
-def _service(store: DuckDBGraphStore) -> ReconstructionService:
+def _service(store: NativeGraphStore) -> ReconstructionService:
     return ReconstructionService(store, FakeEmbedder({}), FakeHopPlanner([]))
 
 
-def test_traverse_forward_follows_cue_of(store: DuckDBGraphStore) -> None:
+def test_traverse_forward_follows_cue_of(store: NativeGraphStore) -> None:
     cue = make_cue("cue-1", "auth")
     content = make_content("content-1", "login")
     load(store, [cue, content], [edge("cue-1", "content-1", EdgeType.CUE_OF)])
@@ -738,7 +738,7 @@ def test_traverse_forward_follows_cue_of(store: DuckDBGraphStore) -> None:
     assert [c.id for c in result] == ["content-1"]
 
 
-def test_traverse_forward_filters_by_tag(store: DuckDBGraphStore) -> None:
+def test_traverse_forward_filters_by_tag(store: NativeGraphStore) -> None:
     cue = make_cue("cue-1", "auth")
     py = make_content("content-py", "login")
     js = make_content("content-js", "logon")
@@ -757,7 +757,7 @@ def test_traverse_forward_filters_by_tag(store: DuckDBGraphStore) -> None:
     assert [c.id for c in result] == ["content-py"]
 
 
-def test_traverse_forward_dedups_across_cues(store: DuckDBGraphStore) -> None:
+def test_traverse_forward_dedups_across_cues(store: NativeGraphStore) -> None:
     cues = [make_cue("cue-1", "a"), make_cue("cue-2", "b")]
     content = make_content("content-1", "login")
     edges = [
@@ -889,7 +889,7 @@ Expected: pyright 0 errors.
 Append to `tests/reconstruct/test_traverse.py`:
 
 ```python
-def test_traverse_reverse_finds_sibling_cues(store: DuckDBGraphStore) -> None:
+def test_traverse_reverse_finds_sibling_cues(store: NativeGraphStore) -> None:
     content = make_content("content-1", "login")
     cue_a = make_cue("cue-a", "auth")
     cue_b = make_cue("cue-b", "signin")
@@ -904,7 +904,7 @@ def test_traverse_reverse_finds_sibling_cues(store: DuckDBGraphStore) -> None:
     assert {c.id for c in result} == {"cue-a", "cue-b"}
 
 
-def test_traverse_reverse_dedups(store: DuckDBGraphStore) -> None:
+def test_traverse_reverse_dedups(store: NativeGraphStore) -> None:
     c1 = make_content("content-1", "login")
     c2 = make_content("content-2", "logout")
     cue = make_cue("cue-a", "auth")
@@ -985,12 +985,12 @@ from delfos.reconstruct.planner import Collected, HopDecision
 from delfos.reconstruct.planners.fake import FakeHopPlanner
 from delfos.reconstruct.service import ReconstructionService
 from delfos.schema import EdgeType
-from delfos.store.duckdb_store import DuckDBGraphStore
+from delfos.store.native_store import NativeGraphStore
 
 from .conftest import FakeEmbedder, edge, load, make_content, make_cue, vec
 
 
-def _build_two_hop_graph(store: DuckDBGraphStore) -> None:
+def _build_two_hop_graph(store: NativeGraphStore) -> None:
     # cue-auth -> content-login -> (sibling) cue-session -> content-token
     seed = make_cue("cue-auth", "auth", embedding=vec(0.1))
     login = make_content("content-login", "login")
@@ -1004,12 +1004,12 @@ def _build_two_hop_graph(store: DuckDBGraphStore) -> None:
     load(store, [seed, login, session, token], edges)
 
 
-def _service(store: DuckDBGraphStore, planner: FakeHopPlanner) -> ReconstructionService:
+def _service(store: NativeGraphStore, planner: FakeHopPlanner) -> ReconstructionService:
     embedder = FakeEmbedder({"q": vec(0.1)})
     return ReconstructionService(store, embedder, planner, seed_k=5)
 
 
-def test_reconstruct_collects_from_first_hop(store: DuckDBGraphStore) -> None:
+def test_reconstruct_collects_from_first_hop(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     planner = FakeHopPlanner(
         [HopDecision(collect=[Collected(id="content-login", relevance=0.9)], stop=True)]
@@ -1020,7 +1020,7 @@ def test_reconstruct_collects_from_first_hop(store: DuckDBGraphStore) -> None:
     assert planner.call_count == 1
 
 
-def test_reconstruct_descends_and_orders_by_relevance(store: DuckDBGraphStore) -> None:
+def test_reconstruct_descends_and_orders_by_relevance(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     planner = FakeHopPlanner(
         [
@@ -1044,7 +1044,7 @@ def test_reconstruct_descends_and_orders_by_relevance(store: DuckDBGraphStore) -
     assert planner.call_count == 2
 
 
-def test_reconstruct_stops_at_budget(store: DuckDBGraphStore) -> None:
+def test_reconstruct_stops_at_budget(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     # Always descend, never stop: only budget halts the walk.
     planner = FakeHopPlanner(
@@ -1257,7 +1257,7 @@ No production code changes are expected — Task 7's implementation already cove
 Append to `tests/reconstruct/test_reconstruct.py`:
 
 ```python
-def test_reconstruct_empty_when_no_seed_cues(store: DuckDBGraphStore) -> None:
+def test_reconstruct_empty_when_no_seed_cues(store: NativeGraphStore) -> None:
     # No cue carries an embedding, so vector_search returns nothing.
     load(store, [make_content("content-1", "login")], [])
     planner = FakeHopPlanner([])
@@ -1267,7 +1267,7 @@ def test_reconstruct_empty_when_no_seed_cues(store: DuckDBGraphStore) -> None:
     assert planner.call_count == 0
 
 
-def test_reconstruct_ignores_hallucinated_ids(store: DuckDBGraphStore) -> None:
+def test_reconstruct_ignores_hallucinated_ids(store: NativeGraphStore) -> None:
     # Two embedded seeds: when hop 1's descend_into is invalid and the stack is
     # empty, the walk falls back to the second seed and keeps going.
     seed1 = make_cue("cue-auth", "auth", embedding=vec(0.1))
@@ -1297,7 +1297,7 @@ def test_reconstruct_ignores_hallucinated_ids(store: DuckDBGraphStore) -> None:
     assert planner.call_count == 2
 
 
-def test_reconstruct_returns_partial_on_planner_error(store: DuckDBGraphStore) -> None:
+def test_reconstruct_returns_partial_on_planner_error(store: NativeGraphStore) -> None:
     _build_two_hop_graph(store)
     planner = FakeHopPlanner(
         [HopDecision(collect=[Collected(id="content-login", relevance=0.7)],

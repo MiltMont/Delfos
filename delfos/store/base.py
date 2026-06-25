@@ -5,7 +5,7 @@ they all go through this interface. Its shape is fully determined by the schema
 in :mod:`delfos.schema` and by the prototype decisions in ``decisions.md``.
 
 This module defines signatures and contracts only. Concrete backends live
-alongside it (see :mod:`delfos.store.duckdb_store`).
+alongside it (see :mod:`delfos.store.native_store`).
 """
 
 from __future__ import annotations
