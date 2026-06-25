@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             embedder = build_embedder(cfg)
             check_model_match(store, embedder)
             planner = build_planner(planner_config_from_env(os.environ))
-            service = ReconstructionService(store, embedder, planner)
+            service = ReconstructionService(store, embedder, planner, seed_k=args.k)
             print(render_reconstruct(service.reconstruct(args.query, args.budget)))
         else:  # pragma: no cover - argparse `required=True` guards this
             return 2
