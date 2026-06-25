@@ -25,6 +25,10 @@ venv/
 *.sqlite3
 *.db
 
+# Local env / secrets
+.env
+.env.local
+
 # OS / editor
 .DS_Store
 .idea/

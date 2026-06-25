@@ -36,7 +36,7 @@ class OpenAIEmbedder:
     _model: str
     _model_version: str | None
     _dimensions: int
-    _dimensions_explicit: bool
+    _send_dimensions: bool
     _client: OpenAI
 
     def __init__(
@@ -44,6 +44,7 @@ class OpenAIEmbedder:
         model: str,
         *,
         dimensions: int | None = None,
+        send_dimensions: bool = True,
         model_version: str | None = None,
         api_key: str | None = None,
         client: OpenAI | None = None,
@@ -57,11 +58,14 @@ class OpenAIEmbedder:
             self._client = OpenAI(api_key=api_key)
 
         if dimensions is not None:
+            # Record the known dimension; only forward it to the API when the
+            # endpoint supports the `dimensions` request param (OpenAI does;
+            # most local OpenAI-compatible servers reject it).
             self._dimensions = dimensions
-            self._dimensions_explicit = True
+            self._send_dimensions = send_dimensions
         elif model in _KNOWN_DIMENSIONS:
             self._dimensions = _KNOWN_DIMENSIONS[model]
-            self._dimensions_explicit = False
+            self._send_dimensions = False
         else:
             msg = (
                 f"Unknown model {model!r}: pass `dimensions` explicitly "
@@ -86,7 +90,7 @@ class OpenAIEmbedder:
         if not texts:
             return []
 
-        if self._dimensions_explicit:
+        if self._send_dimensions:
             resp: CreateEmbeddingResponse = self._client.embeddings.create(
                 model=self._model,
                 input=texts,

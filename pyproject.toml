@@ -10,7 +10,11 @@ requires-python = ">=3.12"
 dependencies = [
     "openai>=1.0.0",
     "pydantic>=2.9.0",
+    "mcp>=1.28.0",
 ]
+
+[project.scripts]
+delfos-mcp = "delfos.mcp.__main__:main"
 
 [build-system]
 requires = ["scikit-build-core>=0.10", "nanobind>=2.0"]
@@ -34,6 +38,7 @@ dev = [
     "ruff>=0.6.0",
     "pyright>=1.1.380",
     "pytest>=8.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [tool.ruff]
