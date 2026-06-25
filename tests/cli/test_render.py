@@ -42,3 +42,27 @@ def test_render_status_lists_model_and_files() -> None:
 def test_render_status_handles_empty_store() -> None:
     out = render_status("m", 8, [])
     assert "0 files" in out or "empty" in out.lower()
+
+
+def test_render_search_lists_cue_ids_and_text() -> None:
+    from delfos.cli.render import render_search
+    from tests.reconstruct.conftest import make_cue
+
+    out = render_search([make_cue("cue-1", "auth"), make_cue("cue-2", "login")])
+    assert "cue-1" in out and "auth" in out
+    assert "cue-2" in out and "login" in out
+
+
+def test_render_search_handles_no_hits() -> None:
+    from delfos.cli.render import render_search
+
+    assert "no" in render_search([]).lower()
+
+
+def test_render_reconstruct_shows_content_provenance() -> None:
+    from delfos.cli.render import render_reconstruct
+    from tests.reconstruct.conftest import make_content
+
+    out = render_reconstruct([make_content("c1", "login")])
+    assert "c1" in out
+    assert "login" in out  # symbol_name / signature surfaced

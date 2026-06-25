@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from delfos.indexer import IndexStats
+from delfos.schema import ContentNode, CueNode
 from delfos.store.base import IndexedFile
 
 
@@ -28,3 +29,19 @@ def render_status(embed_model: str, embed_dim: int, files: list[IndexedFile]) ->
         for f in sorted(files, key=lambda f: f.file_path)
     ]
     return "\n".join([header, count, *rows])
+
+
+def render_search(cues: list[CueNode]) -> str:
+    if not cues:
+        return "no matching cues"
+    return "\n".join(f"  {c.id}  {c.text}" for c in cues)
+
+
+def render_reconstruct(contents: list[ContentNode]) -> str:
+    if not contents:
+        return "no content reconstructed"
+    lines: list[str] = []
+    for c in contents:
+        label = c.signature or c.symbol_name or c.kind.value
+        lines.append(f"  {c.id}  [{c.memory_layer.value}] {c.source_file}: {label}")
+    return "\n".join(lines)

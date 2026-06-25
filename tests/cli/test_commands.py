@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from delfos.cli.app import run_index, run_status
+from delfos.cli.app import run_index, run_search, run_status
+from delfos.cli.render import render_search
+from delfos.reconstruct import ReconstructionService
 from delfos.store.native_store import NativeGraphStore
 from tests.cli.conftest import FixedEmbedder
-from tests.reconstruct.conftest import EMB_DIM, EMB_MODEL
+from tests.reconstruct.conftest import EMB_DIM, EMB_MODEL, FakeEmbedder, load, make_cue, vec
 
 
 def _store(tmp_path: Path) -> NativeGraphStore:
@@ -31,4 +33,18 @@ def test_index_then_status_reflects_written_files(tmp_path: Path) -> None:
     out = run_status(store, EMB_MODEL, EMB_DIM)
     assert "mod.py" in out
     assert "1 file" in out
+    store.close()
+
+
+def test_search_renders_seeded_cue(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    load(store, [make_cue("cue-auth", "authentication", embedding=vec(1.0))], [])
+    # The query text is known here, so a keyed FakeEmbedder is fine.
+    embedder = FakeEmbedder({"how does auth work": vec(1.0)})
+    service = ReconstructionService(store, embedder)
+
+    cues = run_search("how does auth work", 5, service)
+    out = render_search(cues)
+    assert "cue-auth" in out
+    assert "authentication" in out
     store.close()
