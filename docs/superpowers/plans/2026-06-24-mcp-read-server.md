@@ -608,7 +608,7 @@ In `pyproject.toml`, change the `dependencies` array (currently lines 10-13) to:
 dependencies = [
     "openai>=1.0.0",
     "pydantic>=2.9.0",
-    "mcp>=1.2.0",
+    "mcp>=1.28.0",
 ]
 ```
 
