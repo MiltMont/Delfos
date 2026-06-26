@@ -43,7 +43,6 @@ from delfos.schema import (
 
 from .parser import DefinitionKind, ParsedDefinition, ParsedModule
 
-_LANGUAGE = "python"
 _MODULE_CONSTRUCT = "module"
 
 _CONTENT_KINDS: dict[DefinitionKind, ContentKind] = {
@@ -52,6 +51,9 @@ _CONTENT_KINDS: dict[DefinitionKind, ContentKind] = {
     DefinitionKind.METHOD: ContentKind.FUNCTION,
     DefinitionKind.ASYNC_METHOD: ContentKind.FUNCTION,
     DefinitionKind.CLASS: ContentKind.CLASS,
+    DefinitionKind.INTERFACE: ContentKind.CLASS,
+    DefinitionKind.TYPE_ALIAS: ContentKind.CLASS,
+    DefinitionKind.ENUM: ContentKind.CLASS,
 }
 
 
@@ -178,7 +180,7 @@ class _Builder:
         )
 
     def _tag_content(self, content_id: str, construct: str) -> None:
-        self._add_tag_edge(content_id, TagCategory.LANGUAGE, _LANGUAGE)
+        self._add_tag_edge(content_id, TagCategory.LANGUAGE, self._module.language)
         self._add_tag_edge(content_id, TagCategory.MODULE_PATH, self._module.module_path)
         self._add_tag_edge(content_id, TagCategory.LANG_CONSTRUCT, construct)
 

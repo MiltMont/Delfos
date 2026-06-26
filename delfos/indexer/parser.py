@@ -19,6 +19,9 @@ class DefinitionKind(StrEnum):
     METHOD = "method"
     ASYNC_METHOD = "async_method"
     CLASS = "class"
+    INTERFACE = "interface"
+    TYPE_ALIAS = "type_alias"
+    ENUM = "enum"
 
 
 @dataclass(frozen=True)
@@ -39,10 +42,11 @@ class ParsedDefinition:
 
 @dataclass(frozen=True)
 class ParsedModule:
-    """The full parse result for one Python module."""
+    """The full parse result for one source module."""
 
     module_path: str
     source_file: str
+    language: str
     docstring: str | None
     source: str
     definitions: tuple[ParsedDefinition, ...]
@@ -194,6 +198,7 @@ def parse_module(source: str, *, source_file: str, module_path: str) -> ParsedMo
     return ParsedModule(
         module_path=module_path,
         source_file=source_file,
+        language="python",
         docstring=ast.get_docstring(tree),
         source=source,
         definitions=tuple(definitions),
