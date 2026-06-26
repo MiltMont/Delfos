@@ -27,6 +27,7 @@ from delfos.store import GraphStore
 from .embedder import Embedder
 from .extractor import extract
 from .parser import parse_module
+from .ts_parser import parse_ts_module
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -74,12 +75,17 @@ def _module_path(relative_path: str) -> str:
     """Convert a posix relative path to a dotted module path.
 
     ``delfos/schema/nodes.py`` -> ``delfos.schema.nodes``;
-    ``delfos/__init__.py`` -> ``delfos``.
+    ``delfos/__init__.py`` -> ``delfos``;
+    ``src/index.ts`` -> ``src``;
+    ``src/App.tsx`` -> ``src.App``.
     """
-    parts = relative_path[: -len(".py")].split("/")
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
-    return ".".join(parts)
+    for ext, index_name in [(".tsx", "index"), (".ts", "index"), (".py", "__init__")]:
+        if relative_path.endswith(ext):
+            parts = relative_path[: -len(ext)].split("/")
+            if parts and parts[-1] == index_name:
+                parts = parts[:-1]
+            return ".".join(parts)
+    return relative_path
 
 
 class Indexer:
@@ -122,11 +128,12 @@ class Indexer:
     ) -> bool:
         try:
             source = data.decode("utf-8")
-            module = parse_module(
-                source,
-                source_file=relative_path,
-                module_path=_module_path(relative_path),
-            )
+            mp = _module_path(relative_path)
+            if relative_path.endswith(".py"):
+                module = parse_module(source, source_file=relative_path, module_path=mp)
+            else:
+                tsx = relative_path.endswith(".tsx")
+                module = parse_ts_module(source, source_file=relative_path, module_path=mp, tsx=tsx)
         except (SyntaxError, UnicodeDecodeError):
             return False
 
@@ -174,6 +181,6 @@ class Indexer:
                 name for name in dirnames if name not in _SKIP_DIRS and not name.startswith(".")
             ]
             for name in filenames:
-                if name.endswith(".py"):
+                if name.endswith((".py", ".ts", ".tsx")):
                     found.append(Path(dirpath) / name)
         return sorted(found)
