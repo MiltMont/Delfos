@@ -16,6 +16,7 @@ from .parser import (
     parse_module,
 )
 from .pipeline import Indexer, IndexStats
+from .ts_parser import parse_ts_module
 
 __all__ = [
     "DefinitionKind",
@@ -28,4 +29,5 @@ __all__ = [
     "ParsedModule",
     "extract",
     "parse_module",
+    "parse_ts_module",
 ]
