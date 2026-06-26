@@ -93,7 +93,6 @@ def _build_arrow_sig(node: Node, name: str, source_bytes: bytes) -> str:
 def _parse_function(
     node: Node,
     source_bytes: bytes,
-    source_file: str,
     is_test_file: bool,
     class_name: str | None = None,
 ) -> ParsedDefinition | None:
@@ -130,7 +129,6 @@ def _parse_function(
 def _parse_class(
     node: Node,
     source_bytes: bytes,
-    source_file: str,
     is_test_file: bool,
 ) -> list[ParsedDefinition]:
     name_node = node.child_by_field_name("name")
@@ -144,7 +142,7 @@ def _parse_class(
             sig += f" {_node_text(child, source_bytes)}"
             break
 
-    is_test = is_test_file or name.startswith("Test")
+    is_test = is_test_file
     results: list[ParsedDefinition] = [
         ParsedDefinition(
             name=name,
@@ -164,18 +162,14 @@ def _parse_class(
     if body is not None:
         for child in body.children:
             if child.type == "method_definition":
-                method = _parse_function(
-                    child, source_bytes, source_file, is_test_file, class_name=name
-                )
+                method = _parse_function(child, source_bytes, is_test_file, class_name=name)
                 if method is not None:
                     results.append(method)
 
     return results
 
 
-def _parse_interface(
-    node: Node, source_bytes: bytes, is_test_file: bool
-) -> ParsedDefinition | None:
+def _parse_interface(node: Node, source_bytes: bytes) -> ParsedDefinition | None:
     name_node = node.child_by_field_name("name")
     if name_node is None:
         return None
@@ -251,7 +245,6 @@ def _parse_enum(node: Node, source_bytes: bytes) -> ParsedDefinition | None:
 def _parse_lexical_declaration(
     node: Node,
     source_bytes: bytes,
-    source_file: str,
     is_test_file: bool,
 ) -> list[ParsedDefinition]:
     results: list[ParsedDefinition] = []
@@ -304,14 +297,14 @@ def _process_node(
     t = inner.type
 
     if t == "function_declaration":
-        d = _parse_function(inner, source_bytes, source_file, is_test_file)
+        d = _parse_function(inner, source_bytes, is_test_file)
         return [d] if d is not None else []
     if t == "class_declaration":
-        return _parse_class(inner, source_bytes, source_file, is_test_file)
+        return _parse_class(inner, source_bytes, is_test_file)
     if t in ("lexical_declaration", "variable_declaration"):
-        return _parse_lexical_declaration(inner, source_bytes, source_file, is_test_file)
+        return _parse_lexical_declaration(inner, source_bytes, is_test_file)
     if t == "interface_declaration":
-        d = _parse_interface(inner, source_bytes, is_test_file)
+        d = _parse_interface(inner, source_bytes)
         return [d] if d is not None else []
     if t == "type_alias_declaration":
         d = _parse_type_alias(inner, source_bytes)
