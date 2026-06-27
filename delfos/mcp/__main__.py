@@ -25,8 +25,11 @@ from delfos.reconstruct import ReconstructionService
 logger = logging.getLogger(__name__)
 
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
 def main() -> None:
-    configure_cli_logging()
+    configure_cli_logging(verbose=os.environ.get("DELFOS_VERBOSE", "").strip().lower() in _TRUTHY)
     repo_root = os.environ.get("DELFOS_REPO", ".")
     logger.info("[1/5] resolving workspace for %s", repo_root)
     cfg = resolve_config(os.environ, repo_root=repo_root)

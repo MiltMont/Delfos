@@ -145,9 +145,12 @@ def main(argv: list[str] | None = None) -> int:
     # Both land on `args.repo`.
     repo_root = args.repo
 
-    # serve owns its own store/server lifecycle via the MCP entry point.
+    # serve owns its own store/server lifecycle via the MCP entry point, which
+    # re-configures logging for the standalone `delfos-mcp` case; propagate the
+    # verbose flag through the environment so `delfos -v serve` keeps DEBUG.
     if args.command == "serve":
         os.environ["DELFOS_REPO"] = repo_root
+        os.environ["DELFOS_VERBOSE"] = "1" if args.verbose else "0"
         from delfos.mcp.__main__ import main as serve_main
 
         serve_main()
