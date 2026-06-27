@@ -9,18 +9,28 @@ _DEFINITION_ROLE: int = int(scip_pb2.Definition)
 
 
 def _decode_range(occ: scip_pb2.Occurrence) -> tuple[int, int, int, int]:
-    """Return (start_line, start_col, end_line, end_col) from any range encoding."""
+    """Return (start_line, start_col, end_line, end_col) from any range encoding.
+
+    Prefers the typed oneof fields (single_line_range / multi_line_range)
+    introduced in the updated SCIP spec, falls back to the deprecated compact
+    repeated-int32 `range` field for older indexes.  Returns (0, 0, 0, 0) for
+    malformed occurrences that carry neither form.
+    """
     if occ.HasField("single_line_range"):
         r = occ.single_line_range
         return r.line, r.start_character, r.line, r.end_character
     if occ.HasField("multi_line_range"):
         r = occ.multi_line_range
         return r.start_line, r.start_character, r.end_line, r.end_character
-    # Legacy compact encoding: [start_line, start_col, end_col] or [start_line, start_col, end_line, end_col]
+    # Legacy compact encoding: [start_line, start_col, end_col] or
+    # [start_line, start_col, end_line, end_col]
     r = occ.range
     if len(r) == 3:
         return r[0], r[1], r[0], r[2]
-    return r[0], r[1], r[2], r[3]
+    if len(r) == 4:
+        return r[0], r[1], r[2], r[3]
+    # Malformed — return a sentinel rather than crashing.
+    return 0, 0, 0, 0
 
 
 @dataclass(frozen=True)
@@ -59,6 +69,13 @@ class ScipIndex:
         self._external: dict[str, scip_pb2.SymbolInformation] = {
             sym.symbol: sym for sym in index.external_symbols
         }
+        # Inverted index: symbol → [(relative_path, Occurrence)].
+        # Built once at load time so references() is O(1) per symbol rather
+        # than O(total occurrences across all files).
+        self._by_symbol: dict[str, list[tuple[str, Occurrence]]] = {}
+        for rel_path in self._docs:
+            for occ in self.occurrences(rel_path):
+                self._by_symbol.setdefault(occ.symbol, []).append((rel_path, occ))
 
     @property
     def files(self) -> list[str]:
@@ -79,13 +96,15 @@ class ScipIndex:
         return [o for o in self.occurrences(relative_path) if o.is_definition]
 
     def references(self, symbol: str) -> list[tuple[str, Occurrence]]:
-        """All occurrences of *symbol* across every file as (relative_path, occurrence) pairs."""
-        out: list[tuple[str, Occurrence]] = []
-        for path in self._docs:
-            for occ in self.occurrences(path):
-                if occ.symbol == symbol:
-                    out.append((path, occ))
-        return out
+        """All non-definition occurrences of *symbol* as (relative_path, occurrence) pairs.
+
+        The definition occurrence is excluded — callers already know the
+        definition site from the ContentNode itself.  Uses a pre-built inverted
+        index so this is O(results) rather than O(total occurrences).
+        """
+        return [
+            (path, occ) for path, occ in self._by_symbol.get(symbol, []) if not occ.is_definition
+        ]
 
     def symbol_info(self, symbol: str, relative_path: str | None = None) -> SymbolInfo | None:
         """Look up SymbolInformation for *symbol*.

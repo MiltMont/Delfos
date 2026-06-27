@@ -80,6 +80,7 @@ inline delfos::fb::NodeT to_fb_node(const NodeData& n) {
     t.signature               = n.signature;
     t.docstring               = n.docstring;
     t.body                    = n.body;
+    t.scip_symbol             = n.scip_symbol;
     t.embedding               = n.embedding;
     t.embedding_model         = n.embedding_model;
     t.embedding_model_version = n.embedding_model_version;
@@ -107,6 +108,7 @@ inline NodeData from_fb_node(const delfos::fb::NodeT& t) {
     n.signature               = t.signature;
     n.docstring               = t.docstring;
     n.body                    = t.body;
+    n.scip_symbol             = t.scip_symbol;
     n.embedding               = t.embedding;
     n.embedding_model         = t.embedding_model;
     n.embedding_model_version = t.embedding_model_version;

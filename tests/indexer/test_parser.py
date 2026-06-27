@@ -104,9 +104,9 @@ def test_decorated_function() -> None:
 def test_error_messages_extracted() -> None:
     src = (
         "def validate(x: int) -> None:\n"
-        '    if x < 0:\n'
+        "    if x < 0:\n"
         '        raise ValueError("negative value")\n'
-        '    if x > 100:\n'
+        "    if x > 100:\n"
         '        raise RuntimeError("too large")\n'
     )
     m = parse_module(src, source_file="f.py", module_path="f")
@@ -114,11 +114,7 @@ def test_error_messages_extracted() -> None:
 
 
 def test_error_messages_deduplicated() -> None:
-    src = (
-        "def f() -> None:\n"
-        '    raise ValueError("dup")\n'
-        '    raise ValueError("dup")\n'
-    )
+    src = 'def f() -> None:\n    raise ValueError("dup")\n    raise ValueError("dup")\n'
     m = parse_module(src, source_file="f.py", module_path="f")
     assert m.definitions[0].error_messages == ("dup",)
 
@@ -193,12 +189,7 @@ def test_class_non_test_name() -> None:
 
 
 def test_decorated_method_inside_class() -> None:
-    src = (
-        "class Cls:\n"
-        "    @staticmethod\n"
-        "    def static_m():\n"
-        "        pass\n"
-    )
+    src = "class Cls:\n    @staticmethod\n    def static_m():\n        pass\n"
     m = parse_module(src, source_file="f.py", module_path="f")
     assert len(m.definitions) == 2
     method = m.definitions[1]
@@ -213,11 +204,7 @@ def test_decorated_method_inside_class() -> None:
 
 
 def test_multiple_top_level_definitions() -> None:
-    src = (
-        "def foo(): pass\n"
-        "class Bar: pass\n"
-        "async def baz(): pass\n"
-    )
+    src = "def foo(): pass\nclass Bar: pass\nasync def baz(): pass\n"
     docstring, items = _parse(src)
     assert docstring is None
     names = [name for name, _, _ in items]

@@ -48,12 +48,14 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Vendored, machine-generated protobuf bindings for the SCIP schema.
+extend-exclude = ["delfos/scip/scip_pb2.py", "delfos/scip/scip_pb2.pyi"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pyright]
 include = ["."]
-exclude = [".venv", "build"]
+exclude = [".venv", "build", "delfos/scip/scip_pb2.py", "delfos/scip/scip_pb2.pyi"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"

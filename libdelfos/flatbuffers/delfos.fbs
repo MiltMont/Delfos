@@ -34,6 +34,7 @@ table Node {
     embedding:             [double];
     embedding_model:       string;
     embedding_model_version: string;
+    scip_symbol:           string;
 }
 
 table Edge {

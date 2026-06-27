@@ -16,17 +16,23 @@ the file is retried cleanly on the next run.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from delfos.schema import CueNode, Node
+from delfos.scip.generate import ScipGenerationError, generate_scip_index
+from delfos.scip.reader import ScipIndex
 from delfos.store import GraphStore
 
 from .embedder import Embedder
 from .extractor import extract
 from .parser import parse_module
+
+logger = logging.getLogger(__name__)
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -102,6 +108,7 @@ class Indexer:
         """
         root = Path(repo_path).resolve()
         stats = IndexStats()
+        scip = self._load_scip_index(root)
         for path in self._discover(root):
             relative_path = path.relative_to(root).as_posix()
             data = path.read_bytes()
@@ -109,9 +116,27 @@ class Indexer:
             if self._store.indexed_file_sha(relative_path) == sha:
                 stats.skipped_files += 1
                 continue
-            if not self._index_file(relative_path, data, sha, stats):
+            if not self._index_file(relative_path, data, sha, stats, scip):
                 stats.failed_files.append(relative_path)
         return stats
+
+    def _load_scip_index(self, root: Path) -> ScipIndex | None:
+        """Regenerate and load the repo's SCIP index, or ``None`` if unavailable.
+
+        SCIP is a best-effort enrichment: a missing ``scip-python`` binary or a
+        generation/parse failure degrades to "no SCIP" (the ``scip_symbol``
+        foreign key is left empty) rather than aborting the index run.
+        """
+        try:
+            index_path = generate_scip_index(root)
+        except ScipGenerationError as exc:
+            logger.warning("SCIP generation skipped: %s", exc)
+            return None
+        try:
+            return ScipIndex(index_path)
+        except Exception:
+            logger.warning("failed to load SCIP index at %s", index_path, exc_info=True)
+            return None
 
     def _index_file(
         self,
@@ -119,6 +144,7 @@ class Indexer:
         data: bytes,
         sha: str,
         stats: IndexStats,
+        scip: ScipIndex | None = None,
     ) -> bool:
         try:
             source = data.decode("utf-8")
@@ -131,7 +157,8 @@ class Indexer:
             return False
 
         indexed_at = datetime.now(tz=UTC)
-        result = extract(module, git_sha=sha, indexed_at=indexed_at)
+        scip_symbols = self._scip_symbols_for(relative_path, scip)
+        result = extract(module, git_sha=sha, indexed_at=indexed_at, scip_symbols=scip_symbols)
         with self._store.transaction():
             self._store.delete_nodes_for_file(relative_path)
             nodes = self._embed_cues(result.nodes)
@@ -165,6 +192,19 @@ class Indexer:
                 }
             )
         return out
+
+    @staticmethod
+    def _scip_symbols_for(relative_path: str, scip: ScipIndex | None) -> Mapping[int, str] | None:
+        """Map a file's 1-based definition line numbers to their SCIP symbols.
+
+        The join is positional: tree-sitter records ``lineno = start_point[0] +
+        1`` and SCIP places the definition occurrence at the same source line,
+        so converting SCIP's 0-based ``start_line`` with ``+ 1`` lets the
+        extractor look up symbols directly by ``definition.lineno``.
+        """
+        if scip is None:
+            return None
+        return {occ.start_line + 1: occ.symbol for occ in scip.definitions(relative_path)}
 
     @staticmethod
     def _discover(root: Path) -> list[Path]:

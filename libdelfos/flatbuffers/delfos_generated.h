@@ -298,6 +298,7 @@ struct NodeT : public ::flatbuffers::NativeTable {
   std::vector<double> embedding{};
   std::string embedding_model{};
   std::string embedding_model_version{};
+  std::string scip_symbol{};
 };
 
 struct Node FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -324,7 +325,8 @@ struct Node FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_BODY = 38,
     VT_EMBEDDING = 40,
     VT_EMBEDDING_MODEL = 42,
-    VT_EMBEDDING_MODEL_VERSION = 44
+    VT_EMBEDDING_MODEL_VERSION = 44,
+    VT_SCIP_SYMBOL = 46
   };
   const ::flatbuffers::String *id() const {
     return GetPointer<const ::flatbuffers::String *>(VT_ID);
@@ -389,6 +391,9 @@ struct Node FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *embedding_model_version() const {
     return GetPointer<const ::flatbuffers::String *>(VT_EMBEDDING_MODEL_VERSION);
   }
+  const ::flatbuffers::String *scip_symbol() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_SCIP_SYMBOL);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_ID) &&
@@ -425,6 +430,8 @@ struct Node FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyString(embedding_model()) &&
            VerifyOffset(verifier, VT_EMBEDDING_MODEL_VERSION) &&
            verifier.VerifyString(embedding_model_version()) &&
+           VerifyOffset(verifier, VT_SCIP_SYMBOL) &&
+           verifier.VerifyString(scip_symbol()) &&
            verifier.EndTable();
   }
   NodeT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -499,6 +506,9 @@ struct NodeBuilder {
   void add_embedding_model_version(::flatbuffers::Offset<::flatbuffers::String> embedding_model_version) {
     fbb_.AddOffset(Node::VT_EMBEDDING_MODEL_VERSION, embedding_model_version);
   }
+  void add_scip_symbol(::flatbuffers::Offset<::flatbuffers::String> scip_symbol) {
+    fbb_.AddOffset(Node::VT_SCIP_SYMBOL, scip_symbol);
+  }
   explicit NodeBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -532,10 +542,12 @@ inline ::flatbuffers::Offset<Node> CreateNode(
     ::flatbuffers::Offset<::flatbuffers::String> body = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<double>> embedding = 0,
     ::flatbuffers::Offset<::flatbuffers::String> embedding_model = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> embedding_model_version = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> embedding_model_version = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> scip_symbol = 0) {
   NodeBuilder builder_(_fbb);
   builder_.add_deleted_at(deleted_at);
   builder_.add_indexed_at(indexed_at);
+  builder_.add_scip_symbol(scip_symbol);
   builder_.add_embedding_model_version(embedding_model_version);
   builder_.add_embedding_model(embedding_model);
   builder_.add_embedding(embedding);
@@ -580,7 +592,8 @@ inline ::flatbuffers::Offset<Node> CreateNodeDirect(
     const char *body = nullptr,
     const std::vector<double> *embedding = nullptr,
     const char *embedding_model = nullptr,
-    const char *embedding_model_version = nullptr) {
+    const char *embedding_model_version = nullptr,
+    const char *scip_symbol = nullptr) {
   auto id__ = id ? _fbb.CreateString(id) : 0;
   auto deleted_by_commit__ = deleted_by_commit ? _fbb.CreateString(deleted_by_commit) : 0;
   auto source_file__ = source_file ? _fbb.CreateString(source_file) : 0;
@@ -594,6 +607,7 @@ inline ::flatbuffers::Offset<Node> CreateNodeDirect(
   auto embedding__ = embedding ? _fbb.CreateVector<double>(*embedding) : 0;
   auto embedding_model__ = embedding_model ? _fbb.CreateString(embedding_model) : 0;
   auto embedding_model_version__ = embedding_model_version ? _fbb.CreateString(embedding_model_version) : 0;
+  auto scip_symbol__ = scip_symbol ? _fbb.CreateString(scip_symbol) : 0;
   return delfos::fb::CreateNode(
       _fbb,
       id__,
@@ -616,7 +630,8 @@ inline ::flatbuffers::Offset<Node> CreateNodeDirect(
       body__,
       embedding__,
       embedding_model__,
-      embedding_model_version__);
+      embedding_model_version__,
+      scip_symbol__);
 }
 
 ::flatbuffers::Offset<Node> CreateNode(::flatbuffers::FlatBufferBuilder &_fbb, const NodeT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -969,6 +984,7 @@ inline void Node::UnPackTo(NodeT *_o, const ::flatbuffers::resolver_function_t *
   { auto _e = embedding(); if (_e) { _o->embedding.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->embedding[_i] = _e->Get(_i); } } else { _o->embedding.resize(0); } }
   { auto _e = embedding_model(); if (_e) _o->embedding_model = _e->str(); }
   { auto _e = embedding_model_version(); if (_e) _o->embedding_model_version = _e->str(); }
+  { auto _e = scip_symbol(); if (_e) _o->scip_symbol = _e->str(); }
 }
 
 inline ::flatbuffers::Offset<Node> Node::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const NodeT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -1000,6 +1016,7 @@ inline ::flatbuffers::Offset<Node> CreateNode(::flatbuffers::FlatBufferBuilder &
   auto _embedding = _o->embedding.size() ? _fbb.CreateVector(_o->embedding) : 0;
   auto _embedding_model = _o->embedding_model.empty() ? 0 : _fbb.CreateString(_o->embedding_model);
   auto _embedding_model_version = _o->embedding_model_version.empty() ? 0 : _fbb.CreateString(_o->embedding_model_version);
+  auto _scip_symbol = _o->scip_symbol.empty() ? 0 : _fbb.CreateString(_o->scip_symbol);
   return delfos::fb::CreateNode(
       _fbb,
       _id,
@@ -1022,7 +1039,8 @@ inline ::flatbuffers::Offset<Node> CreateNode(::flatbuffers::FlatBufferBuilder &
       _body,
       _embedding,
       _embedding_model,
-      _embedding_model_version);
+      _embedding_model_version,
+      _scip_symbol);
 }
 
 inline EdgeT *Edge::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {

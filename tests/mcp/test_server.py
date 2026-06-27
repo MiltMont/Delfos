@@ -1,20 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 from mcp.server.fastmcp import FastMCP
 
 from delfos.mcp.server import (
     _fetch,  # pyright: ignore[reportPrivateUsage]
+    _implementations,  # pyright: ignore[reportPrivateUsage]
+    _references,  # pyright: ignore[reportPrivateUsage]
     _search,  # pyright: ignore[reportPrivateUsage]
     _traverse_forward,  # pyright: ignore[reportPrivateUsage]
     _traverse_reverse,  # pyright: ignore[reportPrivateUsage]
+    _type_definition,  # pyright: ignore[reportPrivateUsage]
     build_server,
     reconstruct_prompt,
 )
 from delfos.reconstruct import ReconstructionService
 from delfos.schema import EdgeType, TagCategory
+from delfos.scip.reader import ScipIndex
+from delfos.scip.service import ScipService
 from delfos.store.native_store import NativeGraphStore
 from tests.reconstruct.conftest import (
     EMB_DIM,
@@ -24,6 +30,13 @@ from tests.reconstruct.conftest import (
     make_content,
     make_cue,
     make_tag,
+)
+from tests.scip.builders import (
+    document,
+    occurrence,
+    relationship,
+    symbol_information,
+    write_index,
 )
 
 from .conftest import make_service, vec
@@ -140,6 +153,64 @@ def test_build_server_registers_tools_and_prompt(store: NativeGraphStore) -> Non
     server = build_server(svc)
     assert isinstance(server, FastMCP)
     tool_names = {t.name for t in asyncio.run(server.list_tools())}
-    assert tool_names == {"search", "traverse_forward", "traverse_reverse", "fetch"}
+    assert tool_names == {
+        "search",
+        "traverse_forward",
+        "traverse_reverse",
+        "fetch",
+        "references",
+        "implementations",
+        "type_definition",
+    }
     prompt_names = {p.name for p in asyncio.run(server.list_prompts())}
     assert "reconstruct" in prompt_names
+
+
+SCIP_SYM = "scip-python python . a.py/login()."
+
+
+def _scip_service(store: NativeGraphStore, tmp_path: Path) -> ScipService:
+    path = write_index(
+        tmp_path / "index.scip",
+        documents=[
+            document(
+                "a.py",
+                occurrences=[
+                    occurrence(SCIP_SYM, 0, definition=True),
+                    occurrence(SCIP_SYM, 9),
+                ],
+                symbols=[
+                    symbol_information(
+                        SCIP_SYM,
+                        [
+                            relationship("iface#", is_implementation=True),
+                            relationship("Type#", is_type_definition=True),
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+    return ScipService(store, ScipIndex(path))
+
+
+def test_scip_tools_resolve_references_and_relationships(
+    store: NativeGraphStore, tmp_path: Path
+) -> None:
+    content = make_content("c1", "login").model_copy(update={"scip_symbol": SCIP_SYM})
+    load(store, [content], [])
+    scip = _scip_service(store, tmp_path)
+
+    refs = _references(scip, "c1")
+    assert [(r.relative_path, r.start_line) for r in refs] == [("a.py", 9)]
+    assert [r.symbol for r in _implementations(scip, "c1")] == ["iface#"]
+    assert [r.symbol for r in _type_definition(scip, "c1")] == ["Type#"]
+
+
+def test_scip_tools_unavailable_when_no_index() -> None:
+    with pytest.raises(RuntimeError, match="SCIP index not available"):
+        _references(None, "c1")
+    with pytest.raises(RuntimeError, match="SCIP index not available"):
+        _implementations(None, "c1")
+    with pytest.raises(RuntimeError, match="SCIP index not available"):
+        _type_definition(None, "c1")

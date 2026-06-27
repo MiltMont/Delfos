@@ -25,6 +25,9 @@ venv/
 *.sqlite3
 *.db
 
+# Generated SCIP index (regenerated at index time)
+index.scip
+
 # Local env / secrets
 .env
 .env.local

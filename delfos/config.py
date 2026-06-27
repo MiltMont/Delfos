@@ -22,7 +22,9 @@ from openai import OpenAI
 from delfos.indexer import OpenAIEmbedder
 from delfos.indexer.embedder import Embedder
 from delfos.reconstruct.planners.openai import OpenAIHopPlanner
-from delfos.store import NativeGraphStore
+from delfos.scip.reader import ScipIndex
+from delfos.scip.service import ScipService
+from delfos.store import GraphStore, NativeGraphStore
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -32,6 +34,7 @@ class ServerConfig:
     """Resolved server configuration."""
 
     index_path: Path
+    scip_index_path: Path
     embed_model: str
     embed_dim: int
     embed_base_url: str | None
@@ -43,6 +46,7 @@ def config_from_env(env: Mapping[str, str]) -> ServerConfig:
     """Build a :class:`ServerConfig` from environment variables (with defaults)."""
     return ServerConfig(
         index_path=Path(env.get("DELFOS_INDEX_PATH", "delfos/store")),
+        scip_index_path=Path(env.get("DELFOS_SCIP_PATH", "index.scip")),
         embed_model=env.get("DELFOS_EMBED_MODEL", "nomic-embed-text"),
         embed_dim=int(env.get("DELFOS_EMBED_DIM", "768")),
         embed_base_url=env.get("DELFOS_EMBED_BASE_URL"),
@@ -69,6 +73,22 @@ def build_store(cfg: ServerConfig) -> NativeGraphStore:
     )
     store.initialize()
     return store
+
+
+def build_scip_service(cfg: ServerConfig, store: GraphStore) -> ScipService | None:
+    """Load the SCIP index and wrap it in a :class:`ScipService`, if available.
+
+    Returns ``None`` when no index file exists at ``cfg.scip_index_path`` or it
+    fails to parse — the MCP SCIP tools then report an actionable error instead
+    of failing the whole server.
+    """
+    if not cfg.scip_index_path.is_file():
+        return None
+    try:
+        index = ScipIndex(cfg.scip_index_path)
+    except Exception:
+        return None
+    return ScipService(store, index)
 
 
 def check_model_match(store: NativeGraphStore, embedder: Embedder) -> None:
