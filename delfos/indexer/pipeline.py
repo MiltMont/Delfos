@@ -128,20 +128,40 @@ class Indexer:
         workspace.ensure_dirs()
         run_id = uuid.uuid4().hex
         started_at = datetime.now(tz=UTC)
+        logger.info("[1/4] indexing %s (run %s)", root, run_id[:8])
+        logger.info("      workspace: %s", workspace.dir)
 
         stats = IndexStats()
+        logger.info("[2/4] building SCIP cross-reference index")
         scip, scip_status = self._load_scip_index(root, workspace)
+        logger.info("      SCIP index: %s", scip_status.value)
+
+        logger.info("[3/4] scanning Python files and updating the graph")
         for path in self._discover(root):
             relative_path = path.relative_to(root).as_posix()
             data = path.read_bytes()
             sha = _git_blob_sha(data)
             if self._store.indexed_file_sha(relative_path) == sha:
                 stats.skipped_files += 1
+                logger.debug("      skip (unchanged) %s", relative_path)
                 continue
-            if not self._index_file(relative_path, data, sha, stats, scip):
+            if self._index_file(relative_path, data, sha, stats, scip):
+                logger.debug("      indexed %s", relative_path)
+            else:
                 stats.failed_files.append(relative_path)
+                logger.warning("      failed to index %s", relative_path)
+        logger.info(
+            "      graph: %d indexed, %d skipped, %d failed",
+            stats.indexed_files,
+            stats.skipped_files,
+            len(stats.failed_files),
+        )
 
+        logger.info("[4/4] writing manifest")
         self._write_manifest(workspace, run_id, started_at, scip_status)
+        manifest = workspace.load_manifest()
+        verdict = "consistent" if manifest and manifest.is_consistent else "stale/absent"
+        logger.info("      manifest: %s (graph/scip: %s)", workspace.manifest_path, verdict)
         return stats
 
     def _load_scip_index(

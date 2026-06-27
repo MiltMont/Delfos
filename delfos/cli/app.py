@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 
+from delfos._logging import configure_cli_logging
 from delfos.config import (
     build_embedder,
     build_planner,
@@ -45,6 +46,12 @@ def _add_repo_arg(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="delfos", description="Delfos graph-memory CLI")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="log per-file detail (DEBUG) instead of just the high-level steps",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_index = sub.add_parser("index", help="build/update a repo's .delfos/ workspace")
@@ -132,6 +139,7 @@ def run_doctor(workspace: Workspace, manifest: Manifest | None, embed_model: str
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    configure_cli_logging(verbose=args.verbose)
 
     # `index` takes a positional `repo`; every other command an optional --repo.
     # Both land on `args.repo`.
