@@ -11,12 +11,21 @@ from delfos.scip import generate
 from delfos.scip.generate import (
     ScipGenerationError,
     generate_scip_index,
-    scip_index_path,
+    scip_binary_available,
 )
 
 
-def test_scip_index_path_is_canonical(tmp_path: Path) -> None:
-    assert scip_index_path(tmp_path) == tmp_path / "index.scip"
+def test_scip_binary_available_reflects_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _absent(_name: str) -> str | None:
+        return None
+
+    def _present(_name: str) -> str | None:
+        return "/usr/bin/scip-python"
+
+    monkeypatch.setattr(generate.shutil, "which", _absent)
+    assert scip_binary_available() is False
+    monkeypatch.setattr(generate.shutil, "which", _present)
+    assert scip_binary_available() is True
 
 
 def test_missing_binary_raises_actionable_error(
@@ -27,7 +36,7 @@ def test_missing_binary_raises_actionable_error(
 
     monkeypatch.setattr(generate.shutil, "which", _which)
     with pytest.raises(ScipGenerationError, match="not found on PATH"):
-        generate_scip_index(tmp_path)
+        generate_scip_index(tmp_path, tmp_path / "index.scip")
 
 
 def test_nonzero_exit_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,7 +49,7 @@ def test_nonzero_exit_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(generate.shutil, "which", _which)
     monkeypatch.setattr(generate.subprocess, "run", _run)
     with pytest.raises(ScipGenerationError, match="boom"):
-        generate_scip_index(tmp_path)
+        generate_scip_index(tmp_path, tmp_path / "index.scip")
 
 
 def test_missing_output_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,4 +63,4 @@ def test_missing_output_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(generate.shutil, "which", _which)
     monkeypatch.setattr(generate.subprocess, "run", _run)
     with pytest.raises(ScipGenerationError, match="did not produce"):
-        generate_scip_index(tmp_path)
+        generate_scip_index(tmp_path, tmp_path / "index.scip")

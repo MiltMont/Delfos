@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -27,6 +28,14 @@ from delfos.schema import CueNode, Node
 from delfos.scip.generate import ScipGenerationError, generate_scip_index
 from delfos.scip.reader import ScipIndex
 from delfos.store import GraphStore
+from delfos.workspace import (
+    EmbedInfo,
+    GraphInfo,
+    Manifest,
+    ScipInfo,
+    ScipStatus,
+    Workspace,
+)
 
 from .embedder import Embedder
 from .extractor import extract
@@ -99,16 +108,29 @@ class Indexer:
         self._store = store
         self._embedder = embedder
 
-    def index(self, repo_path: str | Path) -> IndexStats:
+    def index(self, repo_path: str | Path, *, workspace: Workspace | None = None) -> IndexStats:
         """Index every Python file under ``repo_path`` and return run stats.
 
         Files whose content SHA is unchanged since the last run are skipped.
         Files that fail to parse (syntax errors, non-UTF-8) are recorded in
         :attr:`IndexStats.failed_files` and skipped without aborting the run.
+
+        The ``.delfos/`` workspace is the source of truth: the SCIP index is
+        regenerated into it and a :class:`~delfos.workspace.Manifest` stamps the
+        run id on both the graph and (when it regenerated) the SCIP index so
+        their consistency is detectable afterwards. ``workspace`` defaults to
+        ``Workspace(repo_path)`` — the production layout where artifacts live in
+        the indexed repo; callers that keep the store elsewhere (tests, ad-hoc
+        harnesses) can pass an explicit one to avoid touching the repo.
         """
         root = Path(repo_path).resolve()
+        workspace = workspace or Workspace(root)
+        workspace.ensure_dirs()
+        run_id = uuid.uuid4().hex
+        started_at = datetime.now(tz=UTC)
+
         stats = IndexStats()
-        scip = self._load_scip_index(root)
+        scip, scip_status = self._load_scip_index(root, workspace)
         for path in self._discover(root):
             relative_path = path.relative_to(root).as_posix()
             data = path.read_bytes()
@@ -118,25 +140,67 @@ class Indexer:
                 continue
             if not self._index_file(relative_path, data, sha, stats, scip):
                 stats.failed_files.append(relative_path)
+
+        self._write_manifest(workspace, run_id, started_at, scip_status)
         return stats
 
-    def _load_scip_index(self, root: Path) -> ScipIndex | None:
-        """Regenerate and load the repo's SCIP index, or ``None`` if unavailable.
+    def _load_scip_index(
+        self, root: Path, workspace: Workspace
+    ) -> tuple[ScipIndex | None, ScipStatus]:
+        """Regenerate and load the repo's SCIP index plus its status.
 
         SCIP is a best-effort enrichment: a missing ``scip-python`` binary or a
         generation/parse failure degrades to "no SCIP" (the ``scip_symbol``
-        foreign key is left empty) rather than aborting the index run.
+        foreign key is left empty) rather than aborting the index run. The
+        returned :class:`~delfos.workspace.ScipStatus` records which happened so
+        the manifest reflects it.
         """
         try:
-            index_path = generate_scip_index(root)
+            index_path = generate_scip_index(root, workspace.scip_path)
         except ScipGenerationError as exc:
             logger.warning("SCIP generation skipped: %s", exc)
-            return None
+            return None, ScipStatus.ABSENT
         try:
-            return ScipIndex(index_path)
+            return ScipIndex(index_path), ScipStatus.PRESENT
         except Exception:
             logger.warning("failed to load SCIP index at %s", index_path, exc_info=True)
-            return None
+            return None, ScipStatus.FAILED
+
+    def _write_manifest(
+        self,
+        workspace: Workspace,
+        run_id: str,
+        run_at: datetime,
+        scip_status: ScipStatus,
+    ) -> None:
+        """Persist provenance for this run, preserving prior SCIP run id if stale.
+
+        ``graph.last_run_id`` is always this run. ``scip.run_id`` is this run
+        only when SCIP regenerated successfully; otherwise the previous run id
+        is kept so :attr:`Manifest.is_consistent` reports the divergence.
+        """
+        previous = workspace.load_manifest()
+        if scip_status is ScipStatus.PRESENT:
+            scip = ScipInfo(status=scip_status, run_id=run_id, generated_at=run_at)
+        elif previous is not None:
+            scip = previous.scip.model_copy(update={"status": scip_status})
+        else:
+            scip = ScipInfo(status=scip_status)
+        manifest = Manifest(
+            repo_root=str(workspace.root),
+            embed=EmbedInfo(
+                model=self._embedder.model,
+                dim=self._embedder.dimensions,
+                model_version=self._embedder.model_version,
+            ),
+            graph=GraphInfo(
+                last_run_id=run_id,
+                updated_at=run_at,
+                files=len(self._store.list_indexed_files()),
+            ),
+            scip=scip,
+        )
+        workspace.write_manifest(manifest)
 
     def _index_file(
         self,

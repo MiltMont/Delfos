@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from delfos.mcp.config import ServerConfig, check_model_match, config_from_env
+from delfos.mcp.config import check_model_match, resolve_config
 from delfos.store.native_store import NativeGraphStore
 
 
@@ -28,31 +28,28 @@ class _Embedder:
         return [[0.0] * 8 for _ in texts]
 
 
-def test_config_from_env_uses_defaults_for_empty_env() -> None:
-    cfg = config_from_env({})
-    assert cfg == ServerConfig(
-        index_path=Path("delfos/store"),
-        scip_index_path=Path("index.scip"),
-        embed_model="nomic-embed-text",
-        embed_dim=768,
-        embed_base_url=None,
-        embed_api_key=None,
-        send_dimensions=False,
-    )
+def test_resolve_config_uses_defaults_for_fresh_repo(tmp_path: Path) -> None:
+    cfg = resolve_config({}, repo_root=tmp_path)
+    assert cfg.embed_model == "nomic-embed-text"
+    assert cfg.embed_dim == 768
+    assert cfg.embed_base_url is None
+    assert cfg.embed_api_key is None
+    assert cfg.send_dimensions is False
+    assert cfg.index_path == tmp_path / ".delfos" / "store"
+    assert cfg.scip_index_path == tmp_path / ".delfos" / "index.scip"
 
 
-def test_config_from_env_reads_overrides() -> None:
-    cfg = config_from_env(
+def test_resolve_config_reads_overrides(tmp_path: Path) -> None:
+    cfg = resolve_config(
         {
-            "DELFOS_INDEX_PATH": "/data/graph",
             "DELFOS_EMBED_MODEL": "text-embedding-3-small",
             "DELFOS_EMBED_DIM": "1536",
             "DELFOS_EMBED_BASE_URL": "http://localhost:11434/v1",
             "DELFOS_EMBED_API_KEY": "ollama",
             "DELFOS_EMBED_SEND_DIM": "1",
-        }
+        },
+        repo_root=tmp_path,
     )
-    assert cfg.index_path == Path("/data/graph")
     assert cfg.embed_model == "text-embedding-3-small"
     assert cfg.embed_dim == 1536
     assert cfg.embed_base_url == "http://localhost:11434/v1"

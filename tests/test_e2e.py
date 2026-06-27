@@ -24,6 +24,7 @@ import pytest
 from delfos.indexer import Embedder, Indexer
 from delfos.schema import CueNode, Direction, NodeType
 from delfos.store import NativeGraphStore
+from delfos.workspace import Workspace
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Deterministic hash embedder — satisfies the Embedder protocol without
@@ -71,7 +72,16 @@ REPO_ROOT = Path(__file__).parent.parent  # workspace root
 
 
 @pytest.fixture(scope="module")
-def indexed_store(tmp_path_factory: pytest.TempPathFactory) -> NativeGraphStore:
+def e2e_workspace(tmp_path_factory: pytest.TempPathFactory) -> Workspace:
+    # Keep the workspace (manifest + SCIP) in a temp dir so indexing REPO_ROOT
+    # never writes a .delfos/ into the actual source tree.
+    return Workspace(tmp_path_factory.mktemp("delfos_e2e_ws"))
+
+
+@pytest.fixture(scope="module")
+def indexed_store(
+    tmp_path_factory: pytest.TempPathFactory, e2e_workspace: Workspace
+) -> NativeGraphStore:
     snap_dir = tmp_path_factory.mktemp("delfos_e2e_snap")
     store = NativeGraphStore(snap_dir, embedding_dim=HASH_DIM, embedding_model=HASH_MODEL)
     store.initialize()
@@ -80,7 +90,7 @@ def indexed_store(tmp_path_factory: pytest.TempPathFactory) -> NativeGraphStore:
     indexer = Indexer(store, embedder)
 
     t0 = time.perf_counter()
-    stats = indexer.index(REPO_ROOT)
+    stats = indexer.index(REPO_ROOT, workspace=e2e_workspace)
     elapsed = time.perf_counter() - t0
 
     assert elapsed < 30.0, f"Indexing took {elapsed:.1f}s (limit 30s)"
@@ -130,12 +140,12 @@ def test_manifest_records_indexed_files(indexed_store: NativeGraphStore) -> None
 
 def test_incremental_reindex_skips_unchanged(
     indexed_store: NativeGraphStore,
-    tmp_path_factory: pytest.TempPathFactory,
+    e2e_workspace: Workspace,
 ) -> None:
     """Second run on the same store skips all files (nothing changed)."""
     embedder = HashEmbedder()
     indexer = Indexer(indexed_store, embedder)
-    stats = indexer.index(REPO_ROOT)
+    stats = indexer.index(REPO_ROOT, workspace=e2e_workspace)
     assert stats.indexed_files == 0, "Expected all files to be skipped on second run"
     assert stats.skipped_files > 0
 

@@ -6,6 +6,7 @@ from delfos.cli.app import run_index, run_search, run_status
 from delfos.cli.render import render_search
 from delfos.reconstruct import ReconstructionService
 from delfos.store.native_store import NativeGraphStore
+from delfos.workspace import Workspace
 from tests.cli.conftest import FixedEmbedder
 from tests.reconstruct.conftest import EMB_DIM, EMB_MODEL, FakeEmbedder, load, make_cue, vec
 
@@ -30,7 +31,7 @@ def test_index_then_status_reflects_written_files(tmp_path: Path) -> None:
     assert stats.indexed_files == 1
     assert stats.failed_files == []
 
-    out = run_status(store, EMB_MODEL, EMB_DIM)
+    out = run_status(store, EMB_MODEL, EMB_DIM, Workspace(repo).load_manifest())
     assert "mod.py" in out
     assert "1 file" in out
     store.close()

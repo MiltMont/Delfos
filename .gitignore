@@ -25,7 +25,10 @@ venv/
 *.sqlite3
 *.db
 
-# Generated SCIP index (regenerated at index time)
+# Per-repo Delfos workspace (graph store, SCIP index, manifest — all regenerated)
+.delfos/
+
+# Legacy generated SCIP index location (pre-workspace)
 index.scip
 
 # Local env / secrets
