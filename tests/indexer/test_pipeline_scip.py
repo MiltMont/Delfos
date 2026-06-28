@@ -2,7 +2,7 @@
 
 Covers the positional (1-based tree-sitter ``lineno`` ↔ 0-based SCIP
 ``start_line``) join, graceful degradation when generation fails, and the
-end-to-end population of ``ContentNode.scip_symbol`` at index time.
+end-to-end use of the SCIP symbol as the ``ContentNode.id`` at index time.
 """
 
 from __future__ import annotations
