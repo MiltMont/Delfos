@@ -60,7 +60,6 @@ class NodeData:
     signature: str
     docstring: str
     body: str
-    scip_symbol: str
     embedding: list[float]
     embedding_model: str
     embedding_model_version: str

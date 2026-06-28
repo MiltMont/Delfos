@@ -140,25 +140,6 @@ def test_roundtrip_content(store: NativeGraphStore) -> None:
     assert store.get_node("content-1") == node
 
 
-def test_roundtrip_content_scip_symbol(store: NativeGraphStore) -> None:
-    node = make_content(embedding=vec(0.2)).model_copy(
-        update={"scip_symbol": "scip-python python . a.py/load_config()."}
-    )
-    store.upsert_node(node)
-    fetched = store.get_node("content-1")
-    assert isinstance(fetched, ContentNode)
-    assert fetched.scip_symbol == "scip-python python . a.py/load_config()."
-    assert fetched == node
-
-
-def test_roundtrip_content_scip_symbol_default_none(store: NativeGraphStore) -> None:
-    node = make_content(embedding=vec(0.2))
-    store.upsert_node(node)
-    fetched = store.get_node("content-1")
-    assert isinstance(fetched, ContentNode)
-    assert fetched.scip_symbol is None
-
-
 def test_get_node_missing_returns_none(store: NativeGraphStore) -> None:
     assert store.get_node("nope") is None
 
