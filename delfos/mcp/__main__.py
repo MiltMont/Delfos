@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import os
 
-from delfos.config import build_embedder, build_store, check_model_match, config_from_env
+from delfos.config import (
+    build_embedder,
+    build_scip_service,
+    build_store,
+    check_model_match,
+    config_from_env,
+)
 from delfos.mcp.server import build_server
 from delfos.reconstruct import ReconstructionService
 
@@ -19,7 +25,8 @@ def main() -> None:
     embedder = build_embedder(cfg)
     check_model_match(store, embedder)
     service = ReconstructionService(store, embedder)  # planner=None: agent is the planner
-    build_server(service).run()
+    scip = build_scip_service(cfg, store)
+    build_server(service, scip).run()
 
 
 if __name__ == "__main__":

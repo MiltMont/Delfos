@@ -147,6 +147,7 @@ def _pydantic_to_native(node: Node) -> _delfos.NodeData:
         nd.kind = _KIND_TO_NATIVE[node.kind]
         nd.memory_layer = _LAYER_TO_NATIVE[node.memory_layer]
         nd.symbol_name = node.symbol_name or ""
+        nd.scip_symbol = node.scip_symbol or ""
         nd.signature = node.signature or ""
         nd.docstring = node.docstring or ""
         nd.body = node.body
@@ -204,6 +205,7 @@ def _native_to_pydantic(nd: _delfos.NodeData) -> Node:
         kind=_KIND_FROM_NATIVE[nd.kind],
         memory_layer=_LAYER_FROM_NATIVE[nd.memory_layer],
         symbol_name=nd.symbol_name or None,
+        scip_symbol=nd.scip_symbol or None,
         signature=nd.signature or None,
         docstring=nd.docstring or None,
         body=nd.body,

@@ -32,6 +32,7 @@ def test_config_from_env_uses_defaults_for_empty_env() -> None:
     cfg = config_from_env({})
     assert cfg == ServerConfig(
         index_path=Path("delfos/store"),
+        scip_index_path=Path("index.scip"),
         embed_model="nomic-embed-text",
         embed_dim=768,
         embed_base_url=None,

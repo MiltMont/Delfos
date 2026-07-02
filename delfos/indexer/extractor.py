@@ -25,6 +25,7 @@ Graph shape produced per file:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -94,10 +95,18 @@ def _tag_id(category: TagCategory, value: str) -> str:
 class _Builder:
     """Accumulates de-duplicated nodes and edges for one file."""
 
-    def __init__(self, module: ParsedModule, *, git_sha: str, indexed_at: datetime) -> None:
+    def __init__(
+        self,
+        module: ParsedModule,
+        *,
+        git_sha: str,
+        indexed_at: datetime,
+        scip_symbols: Mapping[int, str] | None = None,
+    ) -> None:
         self._module = module
         self._git_sha = git_sha
         self._indexed_at = indexed_at
+        self._scip_symbols = scip_symbols or {}
         self._nodes: dict[str, Node] = {}
         self._edges: dict[tuple[str, str, EdgeType], Edge] = {}
 
@@ -130,6 +139,7 @@ class _Builder:
             signature=definition.signature,
             docstring=definition.docstring,
             body=definition.source,
+            scip_symbol=self._scip_symbols.get(definition.lineno),
         )
         self._tag_content(content_id, definition.kind.value)
         self._add_edge(content_id, module_id, EdgeType.PART_OF_TOPIC)
@@ -153,6 +163,7 @@ class _Builder:
         signature: str | None,
         docstring: str | None,
         body: str,
+        scip_symbol: str | None = None,
     ) -> None:
         self._nodes[node_id] = ContentNode(
             id=node_id,
@@ -162,6 +173,7 @@ class _Builder:
             kind=kind,
             memory_layer=memory_layer,
             symbol_name=symbol_name,
+            scip_symbol=scip_symbol,
             signature=signature,
             docstring=docstring,
             body=body,
@@ -204,12 +216,25 @@ class _Builder:
         )
 
 
-def extract(module: ParsedModule, *, git_sha: str, indexed_at: datetime) -> ExtractionResult:
+def extract(
+    module: ParsedModule,
+    *,
+    git_sha: str,
+    indexed_at: datetime,
+    scip_symbols: Mapping[int, str] | None = None,
+) -> ExtractionResult:
     """Extract all nodes and edges for ``module``.
 
     ``git_sha`` is the per-file content SHA stamped on every sourced node and
     edge so the delete-and-reindex strategy can find them; ``indexed_at`` is the
     shared timestamp for this indexing pass. Cue nodes are returned without
     embeddings — the pipeline attaches those inside the file's transaction.
+
+    ``scip_symbols`` optionally maps a definition's 1-based ``lineno`` to its
+    SCIP symbol string; matched definitions get that symbol as their
+    ``ContentNode.scip_symbol`` foreign key. It stays empty for the module node
+    and any definition without a SCIP definition occurrence on its line.
     """
-    return _Builder(module, git_sha=git_sha, indexed_at=indexed_at).build()
+    return _Builder(
+        module, git_sha=git_sha, indexed_at=indexed_at, scip_symbols=scip_symbols
+    ).build()

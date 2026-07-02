@@ -71,6 +71,7 @@ struct Fixture {
         con.signature    = "void foo()";
         con.docstring    = "A test function.";
         con.body         = "void foo() {}";
+        con.scip_symbol  = "scip-python python . a.cpp/foo().";
         con.embedding    = vec(0,1,0,0);
         con.embedding_model = MODEL;
         con_idx = graph.upsert_node(con);
@@ -170,6 +171,7 @@ TEST_CASE("save/load: all node fields are preserved", "[snapshot][fields]") {
     REQUIRE(n.signature    == "void foo()");
     REQUIRE(n.docstring    == "A test function.");
     REQUIRE(n.body         == "void foo() {}");
+    REQUIRE(n.scip_symbol  == "scip-python python . a.cpp/foo().");
 
     // Tag node fields
     NodeIdx ti = g2.find("tag:language:cpp");

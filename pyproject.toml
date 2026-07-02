@@ -11,6 +11,9 @@ dependencies = [
     "openai>=1.0.0",
     "pydantic>=2.9.0",
     "mcp>=1.28.0",
+    "tree-sitter>=0.24.0",
+    "tree-sitter-python>=0.24.0",
+    "protobuf>=7.35.1",
 ]
 
 [project.scripts]
@@ -45,12 +48,14 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Vendored, machine-generated protobuf bindings for the SCIP schema.
+extend-exclude = ["delfos/scip/scip_pb2.py", "delfos/scip/scip_pb2.pyi"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pyright]
 include = ["."]
-exclude = [".venv", "build"]
+exclude = [".venv", "build", "delfos/scip/scip_pb2.py", "delfos/scip/scip_pb2.pyi"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"

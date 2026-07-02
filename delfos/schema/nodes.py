@@ -121,6 +121,7 @@ class ContentNode(SourcedNode, EmbeddedMixin):
     kind: ContentKind
     memory_layer: MemoryLayer
     symbol_name: str | None = None
+    scip_symbol: str | None = None
     signature: str | None = None
     docstring: str | None = None
     body: str

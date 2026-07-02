@@ -12,13 +12,23 @@ from mcp.server.fastmcp import FastMCP
 
 from delfos.reconstruct import ReconstructionService, TagFilter
 from delfos.schema import TagCategory
+from delfos.scip.service import ScipService
 
 from .views import (
     ContentDetail,
     NodeSummary,
+    ScipReference,
+    ScipRelation,
     content_to_detail,
     content_to_summary,
     cue_to_summary,
+    occurrence_to_reference,
+    relationship_to_relation,
+)
+
+_SCIP_UNAVAILABLE = (
+    "SCIP index not available: the server was started without an index.scip. "
+    "Run `delfos index <repo>` with scip-python installed to generate one."
 )
 
 
@@ -65,6 +75,27 @@ def _fetch(service: ReconstructionService, ids: list[str]) -> list[ContentDetail
     return [content_to_detail(c) for c in service.fetch(ids)]
 
 
+def _require_scip(scip: ScipService | None) -> ScipService:
+    if scip is None:
+        raise RuntimeError(_SCIP_UNAVAILABLE)
+    return scip
+
+
+def _references(scip: ScipService | None, content_id: str) -> list[ScipReference]:
+    pairs = _require_scip(scip).references(content_id)
+    return [occurrence_to_reference(path, occ) for path, occ in pairs]
+
+
+def _implementations(scip: ScipService | None, content_id: str) -> list[ScipRelation]:
+    rels = _require_scip(scip).implementations(content_id)
+    return [relationship_to_relation(r) for r in rels]
+
+
+def _type_definition(scip: ScipService | None, content_id: str) -> list[ScipRelation]:
+    rels = _require_scip(scip).type_definition(content_id)
+    return [relationship_to_relation(r) for r in rels]
+
+
 def reconstruct_prompt(query: str, budget: int = 3) -> str:
     """Protocol text teaching the agent to drive a depth-first reconstruction."""
     return (
@@ -82,13 +113,22 @@ def reconstruct_prompt(query: str, budget: int = 3) -> str:
         f"4. Spend at most {budget} traversal steps; backtrack when a branch stops "
         f"yielding relevant nodes.\n"
         f"5. Call `fetch` with the ids worth keeping to get their full bodies.\n"
-        f"6. Stop when relevance drops or the budget is exhausted, then answer from "
+        f"6. Optionally expand a content node with SCIP code intelligence: "
+        f"`references` (where its symbol is used), `implementations`, or "
+        f"`type_definition`. Invoke these only when cross-references help answer "
+        f"the query.\n"
+        f"7. Stop when relevance drops or the budget is exhausted, then answer from "
         f"the fetched content."
     )
 
 
-def build_server(service: ReconstructionService) -> FastMCP:
-    """Build the FastMCP app, registering the four tools and the prompt."""
+def build_server(service: ReconstructionService, scip: ScipService | None = None) -> FastMCP:
+    """Build the FastMCP app, registering the graph + SCIP tools and the prompt.
+
+    ``scip`` is optional: when ``None`` (no ``index.scip`` was loaded) the SCIP
+    tools are still registered but return an actionable error, so the rest of
+    the server keeps working.
+    """
     mcp = FastMCP("delfos")
 
     @mcp.tool()
@@ -112,6 +152,21 @@ def build_server(service: ReconstructionService) -> FastMCP:
     def fetch(ids: list[str]) -> list[ContentDetail]:  # pyright: ignore[reportUnusedFunction]
         """Fetch full content bodies for the given node ids."""
         return _fetch(service, ids)
+
+    @mcp.tool()
+    def references(content_id: str) -> list[ScipReference]:  # pyright: ignore[reportUnusedFunction]
+        """SCIP cross-references: where the content node's symbol is used."""
+        return _references(scip, content_id)
+
+    @mcp.tool()
+    def implementations(content_id: str) -> list[ScipRelation]:  # pyright: ignore[reportUnusedFunction]
+        """SCIP implementations: symbols the content node's symbol implements."""
+        return _implementations(scip, content_id)
+
+    @mcp.tool()
+    def type_definition(content_id: str) -> list[ScipRelation]:  # pyright: ignore[reportUnusedFunction]
+        """SCIP type definitions for the content node's symbol."""
+        return _type_definition(scip, content_id)
 
     @mcp.prompt()
     def reconstruct(query: str, budget: int = 3) -> str:  # pyright: ignore[reportUnusedFunction]

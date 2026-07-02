@@ -41,6 +41,7 @@ struct NodeData {
     std::string signature;
     std::string docstring;
     std::string body;
+    std::string scip_symbol;   // SCIP symbol FK (empty when no SCIP symbol)
 
     // ── Embedding (Cue nodes primarily; Content optionally) ───────────────
     // Stored as float64 (double) to match DuckDB precision and allow

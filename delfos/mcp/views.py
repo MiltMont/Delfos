@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from delfos.schema import ContentNode, CueNode
+from delfos.scip.reader import Occurrence, Relationship
 
 SNIPPET_LIMIT = 500  # mirrors delfos.reconstruct.summaries._SNIPPET_LIMIT
 
@@ -72,3 +73,41 @@ def content_to_detail(node: ContentNode) -> ContentDetail:
         source_file=node.source_file,
         git_sha=node.git_sha,
     )
+
+
+class ScipReference(BaseModel):
+    """A single SCIP occurrence of a symbol: where it is used (SCIP 0-based lines)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    relative_path: str
+    start_line: int
+    start_col: int
+    end_line: int
+    end_col: int
+
+
+class ScipRelation(BaseModel):
+    """A SCIP relationship target symbol (e.g. an implemented or type symbol)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+
+
+def occurrence_to_reference(relative_path: str, occ: Occurrence) -> ScipReference:
+    """Serialize a ``(relative_path, Occurrence)`` pair for the MCP surface."""
+    return ScipReference(
+        symbol=occ.symbol,
+        relative_path=relative_path,
+        start_line=occ.start_line,
+        start_col=occ.start_col,
+        end_line=occ.end_line,
+        end_col=occ.end_col,
+    )
+
+
+def relationship_to_relation(rel: Relationship) -> ScipRelation:
+    """Serialize a SCIP relationship target symbol for the MCP surface."""
+    return ScipRelation(symbol=rel.symbol)
