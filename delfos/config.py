@@ -25,33 +25,56 @@ from delfos.reconstruct.planners.openai import OpenAIHopPlanner
 from delfos.scip.reader import ScipIndex
 from delfos.scip.service import ScipService
 from delfos.store import GraphStore, NativeGraphStore
+from delfos.workspace import Workspace
 
 _TRUTHY = {"1", "true", "yes", "on"}
+
+_DEFAULT_EMBED_MODEL = "nomic-embed-text"
+_DEFAULT_EMBED_DIM = 768
 
 
 @dataclass(frozen=True)
 class ServerConfig:
-    """Resolved server configuration."""
+    """Resolved server configuration, anchored on a repo's ``.delfos/`` workspace."""
 
-    index_path: Path
-    scip_index_path: Path
+    workspace: Workspace
     embed_model: str
     embed_dim: int
     embed_base_url: str | None
     embed_api_key: str | None
     send_dimensions: bool
 
+    @property
+    def index_path(self) -> Path:
+        return self.workspace.store_path
 
-def config_from_env(env: Mapping[str, str]) -> ServerConfig:
-    """Build a :class:`ServerConfig` from environment variables (with defaults)."""
+    @property
+    def scip_index_path(self) -> Path:
+        return self.workspace.scip_path
+
+
+def resolve_config(env: Mapping[str, str], *, repo_root: str | Path = ".") -> ServerConfig:
+    """Resolve config for ``repo_root``'s workspace, merging env, ``config.toml``,
+    and the manifest.
+
+    Precedence (highest first): environment variables, ``.delfos/config.toml``,
+    the manifest's recorded ``embed`` info (for ``model``/``dim`` only — these
+    must match what the index was built with), then built-in defaults. This is
+    why a query against an already-indexed repo needs only credentials in the
+    environment.
+    """
+    workspace = Workspace(repo_root)
+    merged: dict[str, str] = {**workspace.load_config(), **env}
+    manifest = workspace.load_manifest()
+    default_model = manifest.embed.model if manifest else _DEFAULT_EMBED_MODEL
+    default_dim = manifest.embed.dim if manifest else _DEFAULT_EMBED_DIM
     return ServerConfig(
-        index_path=Path(env.get("DELFOS_INDEX_PATH", "delfos/store")),
-        scip_index_path=Path(env.get("DELFOS_SCIP_PATH", "index.scip")),
-        embed_model=env.get("DELFOS_EMBED_MODEL", "nomic-embed-text"),
-        embed_dim=int(env.get("DELFOS_EMBED_DIM", "768")),
-        embed_base_url=env.get("DELFOS_EMBED_BASE_URL"),
-        embed_api_key=env.get("DELFOS_EMBED_API_KEY"),
-        send_dimensions=env.get("DELFOS_EMBED_SEND_DIM", "0").strip().lower() in _TRUTHY,
+        workspace=workspace,
+        embed_model=merged.get("DELFOS_EMBED_MODEL", default_model),
+        embed_dim=int(merged.get("DELFOS_EMBED_DIM", str(default_dim))),
+        embed_base_url=merged.get("DELFOS_EMBED_BASE_URL"),
+        embed_api_key=merged.get("DELFOS_EMBED_API_KEY"),
+        send_dimensions=merged.get("DELFOS_EMBED_SEND_DIM", "0").strip().lower() in _TRUTHY,
     )
 
 
@@ -67,7 +90,8 @@ def build_embedder(cfg: ServerConfig) -> OpenAIEmbedder:
 
 
 def build_store(cfg: ServerConfig) -> NativeGraphStore:
-    """Open the persisted graph store at the configured path."""
+    """Open the persisted graph store in the workspace."""
+    cfg.workspace.ensure_dirs()
     store = NativeGraphStore(
         cfg.index_path, embedding_dim=cfg.embed_dim, embedding_model=cfg.embed_model
     )
@@ -89,6 +113,14 @@ def build_scip_service(cfg: ServerConfig, store: GraphStore) -> ScipService | No
     except Exception:
         return None
     return ScipService(store, index)
+
+
+def planner_config_from_merged(
+    env: Mapping[str, str], *, repo_root: str | Path = "."
+) -> PlannerConfig:
+    """Like :func:`planner_config_from_env` but also reads ``.delfos/config.toml``."""
+    merged: dict[str, str] = {**Workspace(repo_root).load_config(), **env}
+    return planner_config_from_env(merged)
 
 
 def check_model_match(store: NativeGraphStore, embedder: Embedder) -> None:

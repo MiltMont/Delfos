@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from delfos.indexer import IndexStats
 from delfos.schema import ContentNode, CueNode
 from delfos.store.base import IndexedFile
+from delfos.workspace import Manifest
+
+
+@dataclass(frozen=True)
+class Check:
+    """One ``doctor`` verification result."""
+
+    name: str
+    ok: bool
+    detail: str = ""
 
 
 def render_index_stats(stats: IndexStats) -> str:
@@ -19,16 +31,39 @@ def render_index_stats(stats: IndexStats) -> str:
     return "\n".join(lines)
 
 
-def render_status(embed_model: str, embed_dim: int, files: list[IndexedFile]) -> str:
+def render_status(
+    embed_model: str, embed_dim: int, files: list[IndexedFile], manifest: Manifest | None = None
+) -> str:
     header = f"embedding model: {embed_model} (dim {embed_dim})"
+    lines = [header, *_manifest_lines(manifest)]
     count = f"{len(files)} file{'s' if len(files) != 1 else ''} indexed"
     if not files:
-        return f"{header}\n{count} (empty store)"
-    rows = [
+        lines.append(f"{count} (empty store)")
+        return "\n".join(lines)
+    lines.append(count)
+    lines.extend(
         f"  {f.git_sha[:7]}  {f.indexed_at.isoformat()}  {f.file_path}"
         for f in sorted(files, key=lambda f: f.file_path)
+    )
+    return "\n".join(lines)
+
+
+def _manifest_lines(manifest: Manifest | None) -> list[str]:
+    if manifest is None:
+        return ["no manifest (run `delfos index`)"]
+    verdict = "consistent" if manifest.is_consistent else "STALE (graph/scip run mismatch)"
+    return [
+        f"scip: {manifest.scip.status.value}  graph/scip: {verdict}",
     ]
-    return "\n".join([header, count, *rows])
+
+
+def render_doctor(checks: list[Check]) -> str:
+    lines: list[str] = []
+    for check in checks:
+        mark = "ok  " if check.ok else "FAIL"
+        suffix = f"  ({check.detail})" if check.detail else ""
+        lines.append(f"[{mark}] {check.name}{suffix}")
+    return "\n".join(lines)
 
 
 def render_search(cues: list[CueNode]) -> str:

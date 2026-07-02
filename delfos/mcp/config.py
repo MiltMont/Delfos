@@ -7,7 +7,7 @@ from delfos.config import (
     build_embedder,
     build_store,
     check_model_match,
-    config_from_env,
+    resolve_config,
 )
 
 __all__ = [
@@ -15,5 +15,5 @@ __all__ = [
     "build_embedder",
     "build_store",
     "check_model_match",
-    "config_from_env",
+    "resolve_config",
 ]

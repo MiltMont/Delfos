@@ -2,7 +2,8 @@
 
 SCIP indexing is whole-repo: a single ``scip-python index`` invocation walks the
 project and emits one ``index.scip`` protobuf. The indexer runs this as a
-pre-pass before its per-file loop, then loads the result with
+pre-pass before its per-file loop, writing the index into the repo's
+``.delfos/`` workspace, then loads the result with
 :class:`~delfos.scip.reader.ScipIndex`.
 
 Generation is *best effort*: ``scip-python`` is an external Node.js tool that
@@ -17,10 +18,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# Canonical, fixed filename for the generated index. Both the indexer pre-pass
-# and the MCP server load from ``<root>/index.scip``.
-SCIP_INDEX_FILENAME = "index.scip"
-
 # scip-python's console-script name (npm: @sourcegraph/scip-python).
 _SCIP_BINARY = "scip-python"
 
@@ -32,22 +29,23 @@ class ScipGenerationError(RuntimeError):
     """SCIP index generation could not be completed (missing binary or failure)."""
 
 
-def scip_index_path(root: Path) -> Path:
-    """Canonical location of the SCIP index for the repo rooted at ``root``."""
-    return root / SCIP_INDEX_FILENAME
+def scip_binary_available() -> bool:
+    """Whether the ``scip-python`` binary is on ``PATH``."""
+    return shutil.which(_SCIP_BINARY) is not None
 
 
 def generate_scip_index(
     root: Path,
+    output_path: Path,
     *,
     project_name: str | None = None,
     timeout: float = _DEFAULT_TIMEOUT_S,
 ) -> Path:
-    """Regenerate ``<root>/index.scip`` with ``scip-python`` and return its path.
+    """Regenerate the SCIP index for ``root`` at ``output_path`` and return it.
 
-    ``--output`` is resolved relative to ``--cwd``, so passing the bare filename
-    lands the index at ``root / "index.scip"`` regardless of the caller's working
-    directory.
+    ``scip-python`` resolves ``--output`` relative to ``--cwd``; we pass an
+    absolute ``output_path`` so the index lands in the workspace regardless of
+    the caller's working directory.
 
     Raises
     ------
@@ -62,6 +60,8 @@ def generate_scip_index(
             "`npm install -g @sourcegraph/scip-python` to enable SCIP cross-references"
         )
 
+    out = output_path.resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
     name = project_name or root.name
     cmd = [
         binary,
@@ -69,7 +69,7 @@ def generate_scip_index(
         "--project-name",
         name,
         "--output",
-        SCIP_INDEX_FILENAME,
+        str(out),
         "--cwd",
         str(root),
     ]
@@ -83,7 +83,6 @@ def generate_scip_index(
             f"{_SCIP_BINARY} failed (exit {exc.returncode}): {detail}"
         ) from exc
 
-    out = scip_index_path(root)
     if not out.is_file():
         raise ScipGenerationError(f"{_SCIP_BINARY} did not produce {out}")
     return out

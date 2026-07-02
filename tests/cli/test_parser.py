@@ -12,10 +12,23 @@ def test_index_requires_repo() -> None:
     assert ns.repo == "some/repo"
 
 
-def test_index_path_flag_overrides() -> None:
+def test_repo_flag_defaults_to_cwd() -> None:
     parser = build_parser()
-    ns = parser.parse_args(["status", "--index-path", "/data/g"])
-    assert ns.index_path == "/data/g"
+    ns = parser.parse_args(["status"])
+    assert ns.repo == "."
+
+
+def test_repo_flag_overrides() -> None:
+    parser = build_parser()
+    ns = parser.parse_args(["status", "--repo", "/data/proj"])
+    assert ns.repo == "/data/proj"
+
+
+def test_doctor_takes_repo() -> None:
+    parser = build_parser()
+    ns = parser.parse_args(["doctor", "--repo", "/x"])
+    assert ns.command == "doctor"
+    assert ns.repo == "/x"
 
 
 def test_no_command_errors() -> None:

@@ -19,6 +19,7 @@ from delfos.schema import ContentNode
 from delfos.scip.generate import ScipGenerationError
 from delfos.scip.reader import ScipIndex
 from delfos.store.native_store import NativeGraphStore
+from delfos.workspace import ScipStatus, Workspace
 from tests.scip.builders import document, occurrence, write_index
 
 EMBEDDING_DIM = 32
@@ -76,7 +77,7 @@ def test_scip_symbols_for_none_index_returns_none() -> None:
 def test_load_scip_index_degrades_when_generation_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def _raise(_root: Path) -> Path:
+    def _raise(_root: Path, _output: Path) -> Path:
         raise ScipGenerationError("scip-python not found on PATH")
 
     monkeypatch.setattr(pipeline_mod, "generate_scip_index", _raise)
@@ -85,7 +86,11 @@ def test_load_scip_index_degrades_when_generation_fails(
     )
     store.initialize()
     indexer = Indexer(store, _HashEmbedder())
-    assert indexer._load_scip_index(tmp_path) is None  # pyright: ignore[reportPrivateUsage]
+    index, status = indexer._load_scip_index(  # pyright: ignore[reportPrivateUsage]
+        tmp_path, Workspace(tmp_path)
+    )
+    assert index is None
+    assert status is ScipStatus.ABSENT
     store.close()
 
 
@@ -102,8 +107,8 @@ def test_index_populates_scip_symbol_by_lineno(
     )
     scip = ScipIndex(idx)
 
-    def _fake_load(_self: Indexer, _root: Path) -> ScipIndex:
-        return scip
+    def _fake_load(_self: Indexer, _root: Path, _ws: Workspace) -> tuple[ScipIndex, ScipStatus]:
+        return scip, ScipStatus.PRESENT
 
     monkeypatch.setattr(Indexer, "_load_scip_index", _fake_load)
 
@@ -112,7 +117,7 @@ def test_index_populates_scip_symbol_by_lineno(
     )
     store.initialize()
     indexer = Indexer(store, _HashEmbedder())
-    stats = indexer.index(repo)
+    stats = indexer.index(repo, workspace=Workspace(tmp_path / "ws"))
     assert stats.indexed_files == 1
 
     foo = store.get_node("content:mod.py::foo")
@@ -125,3 +130,65 @@ def test_index_populates_scip_symbol_by_lineno(
     assert module.scip_symbol is None
 
     store.close()
+
+
+def test_index_writes_consistent_manifest_when_scip_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "mod.py").write_text("def foo():\n    return 1\n")
+    scip = ScipIndex(
+        write_index(
+            tmp_path / "index.scip",
+            documents=[document("mod.py", occurrences=[occurrence(SYM, 0, definition=True)])],
+        )
+    )
+
+    def _fake_load(_self: Indexer, _root: Path, _ws: Workspace) -> tuple[ScipIndex, ScipStatus]:
+        return scip, ScipStatus.PRESENT
+
+    monkeypatch.setattr(Indexer, "_load_scip_index", _fake_load)
+
+    store = NativeGraphStore(
+        tmp_path / "snap", embedding_dim=EMBEDDING_DIM, embedding_model=EMBEDDING_MODEL
+    )
+    store.initialize()
+    ws = Workspace(tmp_path / "ws")
+    Indexer(store, _HashEmbedder()).index(repo, workspace=ws)
+    store.close()
+
+    manifest = ws.load_manifest()
+    assert manifest is not None
+    assert manifest.embed.model == EMBEDDING_MODEL
+    assert manifest.embed.dim == EMBEDDING_DIM
+    assert manifest.scip.status is ScipStatus.PRESENT
+    # graph and scip stamped with the same run → consistent.
+    assert manifest.scip.run_id == manifest.graph.last_run_id
+    assert manifest.is_consistent
+
+
+def test_index_manifest_is_inconsistent_when_scip_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "mod.py").write_text("def foo():\n    return 1\n")
+
+    def _raise(_root: Path, _output: Path) -> Path:
+        raise ScipGenerationError("scip-python not found on PATH")
+
+    monkeypatch.setattr(pipeline_mod, "generate_scip_index", _raise)
+
+    store = NativeGraphStore(
+        tmp_path / "snap", embedding_dim=EMBEDDING_DIM, embedding_model=EMBEDDING_MODEL
+    )
+    store.initialize()
+    ws = Workspace(tmp_path / "ws")
+    Indexer(store, _HashEmbedder()).index(repo, workspace=ws)
+    store.close()
+
+    manifest = ws.load_manifest()
+    assert manifest is not None
+    assert manifest.scip.status is ScipStatus.ABSENT
+    assert not manifest.is_consistent
