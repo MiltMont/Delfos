@@ -2,7 +2,7 @@
 
 Covers the positional (1-based tree-sitter ``lineno`` ↔ 0-based SCIP
 ``start_line``) join, graceful degradation when generation fails, and the
-end-to-end population of ``ContentNode.scip_symbol`` at index time.
+end-to-end use of the SCIP symbol as the ``ContentNode.id`` at index time.
 """
 
 from __future__ import annotations
@@ -94,7 +94,7 @@ def test_load_scip_index_degrades_when_generation_fails(
     store.close()
 
 
-def test_index_populates_scip_symbol_by_lineno(
+def test_index_uses_scip_symbol_as_content_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = tmp_path / "repo"
@@ -120,14 +120,15 @@ def test_index_populates_scip_symbol_by_lineno(
     stats = indexer.index(repo, workspace=Workspace(tmp_path / "ws"))
     assert stats.indexed_files == 1
 
-    foo = store.get_node("content:mod.py::foo")
+    # The SCIP symbol IS the content node id.
+    foo = store.get_node(SYM)
     assert isinstance(foo, ContentNode)
-    assert foo.scip_symbol == SYM
+    assert foo.id == SYM
 
-    # The module node has no matching SCIP definition line → no symbol.
+    # The module node has no SCIP definition → fallback id unchanged.
     module = store.get_node("content:mod.py::<module>")
     assert isinstance(module, ContentNode)
-    assert module.scip_symbol is None
+    assert module.id == "content:mod.py::<module>"
 
     store.close()
 

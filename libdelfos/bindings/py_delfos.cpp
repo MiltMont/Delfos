@@ -362,7 +362,6 @@ NB_MODULE(_delfos, m) {
         .def_rw("signature",   &NodeData::signature)
         .def_rw("docstring",   &NodeData::docstring)
         .def_rw("body",        &NodeData::body)
-        .def_rw("scip_symbol", &NodeData::scip_symbol)
         // Embedding
         .def_rw("embedding",               &NodeData::embedding)
         .def_rw("embedding_model",         &NodeData::embedding_model)

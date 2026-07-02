@@ -197,14 +197,15 @@ def _scip_service(store: NativeGraphStore, tmp_path: Path) -> ScipService:
 def test_scip_tools_resolve_references_and_relationships(
     store: NativeGraphStore, tmp_path: Path
 ) -> None:
-    content = make_content("c1", "login").model_copy(update={"scip_symbol": SCIP_SYM})
+    # Node id IS the SCIP symbol — no separate scip_symbol field.
+    content = make_content(SCIP_SYM, "login")
     load(store, [content], [])
     scip = _scip_service(store, tmp_path)
 
-    refs = _references(scip, "c1")
+    refs = _references(scip, SCIP_SYM)
     assert [(r.relative_path, r.start_line) for r in refs] == [("a.py", 9)]
-    assert [r.symbol for r in _implementations(scip, "c1")] == ["iface#"]
-    assert [r.symbol for r in _type_definition(scip, "c1")] == ["Type#"]
+    assert [r.symbol for r in _implementations(scip, SCIP_SYM)] == ["iface#"]
+    assert [r.symbol for r in _type_definition(scip, SCIP_SYM)] == ["Type#"]
 
 
 def test_scip_tools_unavailable_when_no_index() -> None:

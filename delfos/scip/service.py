@@ -1,16 +1,12 @@
-"""Read-path bridge from a graph ``ContentNode`` to SCIP cross-references.
+"""Read-path bridge from a graph ContentNode to SCIP cross-references.
 
-:class:`ScipService` mirrors :class:`~delfos.reconstruct.service.ReconstructionService`:
-it wraps a :class:`~delfos.store.base.GraphStore` (to resolve a ``content_id`` to
-its node) and a :class:`~delfos.scip.reader.ScipIndex` (to resolve that node's
-``scip_symbol`` foreign key to cross-reference data). Nothing about
-references/implementations/types is materialized as graph edges — the index
-stays the single authoritative source and is queried on demand.
+ContentNode IDs assigned during indexing are the SCIP symbol string when SCIP
+coverage was present, so ScipService passes content_id directly to the index —
+no secondary FK dereference needed. Nodes indexed without SCIP use a fallback
+id scheme and return empty results naturally (the id is not in the SCIP index).
 
 v1 scope: results are SCIP-native (relative path + line range + symbol). We do
-not resolve a referencing occurrence back to its enclosing ``ContentNode`` —
-that needs an enclosing-range index and a ``scip_symbol``→``content_id`` reverse
-lookup that does not exist yet (future enhancement).
+not resolve a referencing occurrence back to its enclosing ContentNode.
 """
 
 from __future__ import annotations
@@ -23,7 +19,7 @@ from delfos.store import GraphStore
 
 
 class ScipService:
-    """Resolve a content node's SCIP foreign key to cross-reference data."""
+    """Resolve a content node's SCIP cross-references using its id as the symbol."""
 
     def __init__(self, store: GraphStore, index: ScipIndex) -> None:
         self._store = store
@@ -32,14 +28,11 @@ class ScipService:
     def references(self, content_id: str) -> list[tuple[str, Occurrence]]:
         """All non-definition usages of the node's symbol across the repo.
 
-        Returns ``(relative_path, occurrence)`` pairs. The definition occurrence
-        is excluded — the caller already knows the definition site from the
-        ``ContentNode`` itself. Empty when the node carries no SCIP symbol.
+        Returns ``(relative_path, occurrence)`` pairs. Empty when ``content_id``
+        is not a SCIP symbol (node was indexed without SCIP coverage).
         """
-        node = self._content_node(content_id)
-        if not node.scip_symbol:
-            return []
-        return self._index.references(node.scip_symbol)
+        self._content_node(content_id)  # validate node exists and is ContentNode
+        return self._index.references(content_id)
 
     def implementations(self, content_id: str) -> list[Relationship]:
         """Symbols the node's symbol implements (SCIP ``is_implementation``)."""
@@ -59,11 +52,8 @@ class ScipService:
         self, content_id: str, predicate: Callable[[Relationship], bool]
     ) -> list[Relationship]:
         node = self._content_node(content_id)
-        if not node.scip_symbol:
-            return []
-        # The symbol's SymbolInformation lives in its defining document, which is
-        # the content node's own source file (with external_symbols as fallback).
-        info = self._index.symbol_info(node.scip_symbol, relative_path=node.source_file)
+        # source_file scopes the symbol_info lookup to document-local symbols first.
+        info = self._index.symbol_info(content_id, relative_path=node.source_file)
         if info is None:
             return []
         return [rel for rel in info.relationships if predicate(rel)]

@@ -76,7 +76,9 @@ def _module_content_id(source_file: str) -> str:
     return f"content:{source_file}::<module>"
 
 
-def _definition_content_id(source_file: str, qualified_name: str) -> str:
+def _definition_content_id(source_file: str, qualified_name: str, scip_symbol: str | None) -> str:
+    if scip_symbol:
+        return scip_symbol
     return f"content:{source_file}::{qualified_name}"
 
 
@@ -130,7 +132,8 @@ class _Builder:
 
     def _add_definition(self, definition: ParsedDefinition, module_id: str) -> None:
         source_file = self._module.source_file
-        content_id = _definition_content_id(source_file, definition.qualified_name)
+        scip_sym = self._scip_symbols.get(definition.lineno)
+        content_id = _definition_content_id(source_file, definition.qualified_name, scip_sym)
         self._add_content(
             node_id=content_id,
             kind=ContentKind.TEST if definition.is_test else _CONTENT_KINDS[definition.kind],
@@ -139,7 +142,6 @@ class _Builder:
             signature=definition.signature,
             docstring=definition.docstring,
             body=definition.source,
-            scip_symbol=self._scip_symbols.get(definition.lineno),
         )
         self._tag_content(content_id, definition.kind.value)
         self._add_edge(content_id, module_id, EdgeType.PART_OF_TOPIC)
@@ -163,7 +165,6 @@ class _Builder:
         signature: str | None,
         docstring: str | None,
         body: str,
-        scip_symbol: str | None = None,
     ) -> None:
         self._nodes[node_id] = ContentNode(
             id=node_id,
@@ -173,7 +174,6 @@ class _Builder:
             kind=kind,
             memory_layer=memory_layer,
             symbol_name=symbol_name,
-            scip_symbol=scip_symbol,
             signature=signature,
             docstring=docstring,
             body=body,
@@ -231,9 +231,10 @@ def extract(
     embeddings — the pipeline attaches those inside the file's transaction.
 
     ``scip_symbols`` optionally maps a definition's 1-based ``lineno`` to its
-    SCIP symbol string; matched definitions get that symbol as their
-    ``ContentNode.scip_symbol`` foreign key. It stays empty for the module node
-    and any definition without a SCIP definition occurrence on its line.
+    SCIP symbol string. When a match exists, that symbol becomes the
+    ``ContentNode.id`` directly, enabling O(1) reverse lookup from any SCIP
+    occurrence. Definitions without a match use the fallback id scheme
+    ``content:{source_file}::{qualified_name}``.
     """
     return _Builder(
         module, git_sha=git_sha, indexed_at=indexed_at, scip_symbols=scip_symbols

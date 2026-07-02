@@ -38,7 +38,7 @@ def store(tmp_path: Path) -> Iterator[NativeGraphStore]:
     s.close()
 
 
-def _content(node_id: str, scip_symbol: str | None) -> ContentNode:
+def _content(node_id: str) -> ContentNode:
     return ContentNode(
         id=node_id,
         source_file="a.py",
@@ -47,7 +47,6 @@ def _content(node_id: str, scip_symbol: str | None) -> ContentNode:
         kind=ContentKind.FUNCTION,
         memory_layer=MemoryLayer.SEMANTIC,
         symbol_name="foo",
-        scip_symbol=scip_symbol,
         body="def foo(): ...",
     )
 
@@ -81,21 +80,22 @@ def _index(path: Path) -> ScipIndex:
 def test_references_resolves_symbol_and_excludes_definition(
     store: NativeGraphStore, tmp_path: Path
 ) -> None:
-    store.upsert_node(_content("content:a.py::foo", SYM))
+    store.upsert_node(_content(SYM))
     svc = ScipService(store, _index(tmp_path / "index.scip"))
-    refs = svc.references("content:a.py::foo")
+    refs = svc.references(SYM)
     assert {(path, occ.start_line) for path, occ in refs} == {("a.py", 20), ("b.py", 5)}
 
 
 def test_implementations_and_type_definition(store: NativeGraphStore, tmp_path: Path) -> None:
-    store.upsert_node(_content("content:a.py::foo", SYM))
+    store.upsert_node(_content(SYM))
     svc = ScipService(store, _index(tmp_path / "index.scip"))
-    assert [r.symbol for r in svc.implementations("content:a.py::foo")] == ["iface#"]
-    assert [r.symbol for r in svc.type_definition("content:a.py::foo")] == ["Type#"]
+    assert [r.symbol for r in svc.implementations(SYM)] == ["iface#"]
+    assert [r.symbol for r in svc.type_definition(SYM)] == ["Type#"]
 
 
-def test_node_without_scip_symbol_returns_empty(store: NativeGraphStore, tmp_path: Path) -> None:
-    store.upsert_node(_content("content:a.py::foo", None))
+def test_node_with_fallback_id_returns_empty(store: NativeGraphStore, tmp_path: Path) -> None:
+    # A node indexed without SCIP has a fallback id, not in the SCIP index → [].
+    store.upsert_node(_content("content:a.py::foo"))
     svc = ScipService(store, _index(tmp_path / "index.scip"))
     assert svc.references("content:a.py::foo") == []
     assert svc.implementations("content:a.py::foo") == []
