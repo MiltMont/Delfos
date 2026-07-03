@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import dotenv_values
 from openai import OpenAI
 from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,6 +32,20 @@ from delfos.workspace import Workspace
 
 _DEFAULT_EMBED_MODEL = "nomic-embed-text"
 _DEFAULT_EMBED_DIM = 768
+
+
+def load_dotenv_values(repo_root: str | Path) -> dict[str, str]:
+    """Read ``<repo_root>/.env`` without mutating ``os.environ``.
+
+    Returns ``{}`` when no ``.env`` file exists. Anchored explicitly to
+    ``repo_root`` — never walks up from the process's CWD, so an MCP client
+    launching the server with a foreign working directory still finds the
+    repo-local ``.env``.
+    """
+    env_file = Path(repo_root) / ".env"
+    if not env_file.is_file():
+        return {}
+    return {k: v for k, v in dotenv_values(env_file).items() if v is not None}
 
 
 class ConfigError(RuntimeError):

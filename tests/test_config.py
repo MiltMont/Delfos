@@ -10,6 +10,7 @@ from delfos.config import (
     DelfosSettings,
     PlannerConfig,
     build_planner,
+    load_dotenv_values,
     planner_config_from_env,
     planner_config_from_merged,
     resolve_config,
@@ -139,3 +140,17 @@ def test_delfos_settings_api_key_is_not_exposed_via_repr() -> None:
 def test_resolve_config_raises_config_error_for_malformed_dim(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="DELFOS_EMBED_DIM"):
         resolve_config({"DELFOS_EMBED_DIM": "not-a-number"}, repo_root=tmp_path)
+
+
+def test_load_dotenv_values_reads_repo_local_env(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("DELFOS_EMBED_MODEL=from-dotenv\n")
+    assert load_dotenv_values(tmp_path) == {"DELFOS_EMBED_MODEL": "from-dotenv"}
+
+
+def test_load_dotenv_values_absent_file_returns_empty(tmp_path: Path) -> None:
+    assert load_dotenv_values(tmp_path) == {}
+
+
+def test_load_dotenv_values_ignores_keys_without_a_value(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("DELFOS_EMBED_MODEL=from-dotenv\nBARE_KEY\n")
+    assert load_dotenv_values(tmp_path) == {"DELFOS_EMBED_MODEL": "from-dotenv"}
