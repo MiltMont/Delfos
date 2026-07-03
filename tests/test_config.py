@@ -134,3 +134,8 @@ def test_delfos_settings_api_key_is_not_exposed_via_repr() -> None:
     assert "sk-super-secret" not in repr(settings)
     assert settings.embed_api_key is not None
     assert settings.embed_api_key.get_secret_value() == "sk-super-secret"
+
+
+def test_resolve_config_raises_config_error_for_malformed_dim(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="DELFOS_EMBED_DIM"):
+        resolve_config({"DELFOS_EMBED_DIM": "not-a-number"}, repo_root=tmp_path)

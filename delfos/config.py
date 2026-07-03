@@ -29,8 +29,6 @@ from delfos.scip.service import ScipService
 from delfos.store import GraphStore, NativeGraphStore
 from delfos.workspace import Workspace
 
-_TRUTHY = {"1", "true", "yes", "on"}
-
 _DEFAULT_EMBED_MODEL = "nomic-embed-text"
 _DEFAULT_EMBED_DIM = 768
 
@@ -124,20 +122,25 @@ def resolve_config(env: Mapping[str, str], *, repo_root: str | Path = ".") -> Se
     the manifest's recorded ``embed`` info (for ``model``/``dim`` only — these
     must match what the index was built with), then built-in defaults. This is
     why a query against an already-indexed repo needs only credentials in the
-    environment.
+    environment. Raises :class:`ConfigError`, naming the exact ``DELFOS_*``
+    variable, if a value fails validation (e.g. a non-numeric
+    ``DELFOS_EMBED_DIM``).
     """
     workspace = Workspace(repo_root)
     merged: dict[str, str] = {**workspace.load_config(), **env}
     manifest = workspace.load_manifest()
     default_model = manifest.embed.model if manifest else _DEFAULT_EMBED_MODEL
     default_dim = manifest.embed.dim if manifest else _DEFAULT_EMBED_DIM
+    settings = DelfosSettings.from_mapping(merged)
     return ServerConfig(
         workspace=workspace,
-        embed_model=merged.get("DELFOS_EMBED_MODEL", default_model),
-        embed_dim=int(merged.get("DELFOS_EMBED_DIM", str(default_dim))),
-        embed_base_url=merged.get("DELFOS_EMBED_BASE_URL"),
-        embed_api_key=merged.get("DELFOS_EMBED_API_KEY"),
-        send_dimensions=merged.get("DELFOS_EMBED_SEND_DIM", "0").strip().lower() in _TRUTHY,
+        embed_model=settings.embed_model or default_model,
+        embed_dim=settings.embed_dim if settings.embed_dim is not None else default_dim,
+        embed_base_url=settings.embed_base_url,
+        embed_api_key=(
+            settings.embed_api_key.get_secret_value() if settings.embed_api_key else None
+        ),
+        send_dimensions=settings.embed_send_dim,
     )
 
 
@@ -207,10 +210,11 @@ class PlannerConfig:
 
 def planner_config_from_env(env: Mapping[str, str]) -> PlannerConfig:
     """Read the `DELFOS_LLM_*` chat-model settings (all optional)."""
+    settings = DelfosSettings.from_mapping(env)
     return PlannerConfig(
-        llm_model=env.get("DELFOS_LLM_MODEL"),
-        llm_base_url=env.get("DELFOS_LLM_BASE_URL"),
-        llm_api_key=env.get("DELFOS_LLM_API_KEY"),
+        llm_model=settings.llm_model,
+        llm_base_url=settings.llm_base_url,
+        llm_api_key=settings.llm_api_key.get_secret_value() if settings.llm_api_key else None,
     )
 
 
