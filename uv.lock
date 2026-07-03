@@ -185,6 +185,8 @@ dependencies = [
     { name = "openai" },
     { name = "protobuf" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
     { name = "tree-sitter" },
     { name = "tree-sitter-python" },
 ]
@@ -193,7 +195,6 @@ dependencies = [
 dev = [
     { name = "pyright" },
     { name = "pytest" },
-    { name = "python-dotenv" },
     { name = "ruff" },
 ]
 
@@ -203,6 +204,8 @@ requires-dist = [
     { name = "openai", specifier = ">=1.0.0" },
     { name = "protobuf", specifier = ">=7.35.1" },
     { name = "pydantic", specifier = ">=2.9.0" },
+    { name = "pydantic-settings", specifier = ">=2.5.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "tree-sitter", specifier = ">=0.24.0" },
     { name = "tree-sitter-python", specifier = ">=0.24.0" },
 ]
@@ -211,7 +214,6 @@ requires-dist = [
 dev = [
     { name = "pyright", specifier = ">=1.1.380" },
     { name = "pytest", specifier = ">=8.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "ruff", specifier = ">=0.6.0" },
 ]
 

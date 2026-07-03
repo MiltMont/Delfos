@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from openai import OpenAI
+from pydantic import SecretStr, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from delfos.indexer import OpenAIEmbedder
 from delfos.indexer.embedder import Embedder
@@ -31,6 +33,67 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 _DEFAULT_EMBED_MODEL = "nomic-embed-text"
 _DEFAULT_EMBED_DIM = 768
+
+
+class ConfigError(RuntimeError):
+    """Raised when a ``DELFOS_*`` value fails validation, naming the exact variable."""
+
+
+class DelfosSettings(BaseSettings):
+    """Typed, validated view of a merged ``DELFOS_*`` mapping.
+
+    Field names are the lowercased suffix of the matching env var
+    (``DELFOS_EMBED_DIM`` -> ``embed_dim``). ``embed_model``/``embed_dim``
+    default to ``None`` here on purpose: whether the *effective* default is
+    the manifest's recorded value or the hardcoded built-in depends on
+    whether the repo already has an index, which only :func:`resolve_config`
+    knows.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="DELFOS_", extra="ignore")
+
+    embed_model: str | None = None
+    embed_dim: int | None = None
+    embed_base_url: str | None = None
+    embed_api_key: SecretStr | None = None
+    embed_send_dim: bool = False
+
+    llm_model: str | None = None
+    llm_base_url: str | None = None
+    llm_api_key: SecretStr | None = None
+
+    @classmethod
+    def from_mapping(cls, merged: Mapping[str, str]) -> DelfosSettings:
+        """Validate a pre-merged mapping as a pure function of ``merged``.
+
+        ``merged`` is already the fully precedence-resolved set of
+        ``DELFOS_*`` values (real env > repo ``.env`` > ``config.toml``).
+        Every field is passed explicitly — even when absent, as ``None`` or
+        its default — so pydantic-settings' init source takes priority over
+        its own environment source for every field. The result never depends
+        on the real process environment, only on ``merged``.
+        """
+        try:
+            return cls(
+                embed_model=merged.get("DELFOS_EMBED_MODEL"),
+                embed_dim=merged.get("DELFOS_EMBED_DIM"),  # type: ignore[arg-type]
+                embed_base_url=merged.get("DELFOS_EMBED_BASE_URL"),
+                embed_api_key=merged.get("DELFOS_EMBED_API_KEY"),  # type: ignore[arg-type]
+                embed_send_dim=merged.get("DELFOS_EMBED_SEND_DIM", "0"),  # type: ignore[arg-type]
+                llm_model=merged.get("DELFOS_LLM_MODEL"),
+                llm_base_url=merged.get("DELFOS_LLM_BASE_URL"),
+                llm_api_key=merged.get("DELFOS_LLM_API_KEY"),  # type: ignore[arg-type]
+            )
+        except ValidationError as exc:
+            raise ConfigError(_format_validation_error(exc)) from exc
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    lines = [
+        f"DELFOS_{'_'.join(str(p) for p in error['loc']).upper()}: {error['msg']}"
+        for error in exc.errors()
+    ]
+    return "invalid configuration:\n" + "\n".join(lines)
 
 
 @dataclass(frozen=True)

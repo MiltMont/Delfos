@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from delfos.config import (
+    ConfigError,
+    DelfosSettings,
     PlannerConfig,
     build_planner,
     planner_config_from_env,
@@ -89,3 +91,46 @@ def test_build_planner_returns_planner_for_model() -> None:
         PlannerConfig(llm_model="local-chat", llm_base_url="http://x/v1", llm_api_key="k")
     )
     assert planner.model == "local-chat"
+
+
+def test_delfos_settings_from_mapping_parses_typed_fields() -> None:
+    settings = DelfosSettings.from_mapping(
+        {
+            "DELFOS_EMBED_MODEL": "text-embedding-3-small",
+            "DELFOS_EMBED_DIM": "1536",
+            "DELFOS_EMBED_SEND_DIM": "1",
+        }
+    )
+    assert settings.embed_model == "text-embedding-3-small"
+    assert settings.embed_dim == 1536
+    assert settings.embed_send_dim is True
+
+
+def test_delfos_settings_from_mapping_defaults_to_none_when_absent() -> None:
+    settings = DelfosSettings.from_mapping({})
+    assert settings.embed_model is None
+    assert settings.embed_dim is None
+    assert settings.embed_base_url is None
+    assert settings.embed_api_key is None
+    assert settings.embed_send_dim is False
+    assert settings.llm_model is None
+
+
+def test_delfos_settings_from_mapping_raises_config_error_for_bad_dim() -> None:
+    with pytest.raises(ConfigError, match="DELFOS_EMBED_DIM"):
+        DelfosSettings.from_mapping({"DELFOS_EMBED_DIM": "not-a-number"})
+
+
+def test_delfos_settings_from_mapping_does_not_leak_process_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DELFOS_EMBED_MODEL", "leaked-from-os-environ")
+    settings = DelfosSettings.from_mapping({})
+    assert settings.embed_model is None
+
+
+def test_delfos_settings_api_key_is_not_exposed_via_repr() -> None:
+    settings = DelfosSettings.from_mapping({"DELFOS_EMBED_API_KEY": "sk-super-secret"})
+    assert "sk-super-secret" not in repr(settings)
+    assert settings.embed_api_key is not None
+    assert settings.embed_api_key.get_secret_value() == "sk-super-secret"
