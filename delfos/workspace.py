@@ -20,6 +20,7 @@ on the graph (always) and on the SCIP index (only when it regenerates), and
 
 from __future__ import annotations
 
+import logging
 import tomllib
 from datetime import datetime
 from enum import StrEnum
@@ -166,6 +167,12 @@ _CONFIG_KEY_MAP: dict[tuple[str, str], str] = {
     ("llm", "base_url"): "DELFOS_LLM_BASE_URL",
 }
 
+logger = logging.getLogger(__name__)
+
+_KNOWN_KEYS: dict[str, set[str]] = {}
+for _table, _key in _CONFIG_KEY_MAP:
+    _KNOWN_KEYS.setdefault(_table, set()).add(_key)
+
 
 def _config_to_env(data: dict[str, object]) -> dict[str, str]:
     out: dict[str, str] = {}
@@ -177,7 +184,23 @@ def _config_to_env(data: dict[str, object]) -> dict[str, str]:
         if key not in typed_section:
             continue
         out[env_name] = _stringify(typed_section[key])
+    _warn_unknown_keys(data)
     return out
+
+
+def _warn_unknown_keys(data: dict[str, object]) -> None:
+    for table, section in data.items():
+        if not isinstance(section, dict):
+            logger.warning("config.toml: unknown top-level key %r", table)
+            continue
+        known = _KNOWN_KEYS.get(table)
+        if known is None:
+            logger.warning("config.toml: unknown section [%s]", table)
+            continue
+        typed_section = cast("dict[str, object]", section)
+        for key in typed_section:
+            if key not in known:
+                logger.warning("config.toml: unknown key %r in [%s]", key, table)
 
 
 def _stringify(value: object) -> str:

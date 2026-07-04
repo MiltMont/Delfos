@@ -28,6 +28,27 @@ class _Embedder:
         return [[0.0] * 8 for _ in texts]
 
 
+class _DimEmbedder:
+    def __init__(self, model: str, dim: int) -> None:
+        self._model = model
+        self._dim = dim
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def model_version(self) -> str | None:
+        return None
+
+    @property
+    def dimensions(self) -> int:
+        return self._dim
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] * self._dim for _ in texts]
+
+
 def test_resolve_config_uses_defaults_for_fresh_repo(tmp_path: Path) -> None:
     cfg = resolve_config({}, repo_root=tmp_path)
     assert cfg.embed_model == "nomic-embed-text"
@@ -69,4 +90,12 @@ def test_check_model_match_raises_on_mismatch(tmp_path: Path) -> None:
     store.initialize()
     with pytest.raises(RuntimeError, match="fake-v1"):
         check_model_match(store, _Embedder("other-model"))
+    store.close()
+
+
+def test_check_model_match_raises_on_dim_mismatch(tmp_path: Path) -> None:
+    store = NativeGraphStore(tmp_path / "g", embedding_dim=8, embedding_model="fake-v1")
+    store.initialize()
+    with pytest.raises(RuntimeError, match="dimension"):
+        check_model_match(store, _DimEmbedder("fake-v1", 16))
     store.close()

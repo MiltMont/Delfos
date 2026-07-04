@@ -75,18 +75,22 @@ def test_configure_cli_logging_is_idempotent() -> None:
     assert any(h.name == "delfos-cli-stderr" for h in logger.handlers)
 
 
-def test_cli_serve_propagates_verbose_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, str | None] = {}
+def test_cli_serve_passes_verbose_and_repo_explicitly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
 
-    def _fake_serve() -> None:
-        captured["verbose"] = mcp_main.os.environ.get("DELFOS_VERBOSE")
+    def _fake_serve(repo_root: str | None = None, *, verbose: bool | None = None) -> None:
+        captured["repo_root"] = repo_root
+        captured["verbose"] = verbose
 
     monkeypatch.setattr(mcp_main, "main", _fake_serve)
     app.main(["-v", "serve", "--repo", str(tmp_path)])
-    assert captured["verbose"] == "1"
+    assert captured["repo_root"] == str(tmp_path)
+    assert captured["verbose"] is True
 
     app.main(["serve", "--repo", str(tmp_path)])
-    assert captured["verbose"] == "0"
+    assert captured["verbose"] is False
 
 
 def test_mcp_main_honors_verbose_env(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -17,7 +17,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import dotenv_values
 from openai import OpenAI
+from pydantic import SecretStr, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from delfos.indexer import OpenAIEmbedder
 from delfos.indexer.embedder import Embedder
@@ -27,10 +30,83 @@ from delfos.scip.service import ScipService
 from delfos.store import GraphStore, NativeGraphStore
 from delfos.workspace import Workspace
 
-_TRUTHY = {"1", "true", "yes", "on"}
-
 _DEFAULT_EMBED_MODEL = "nomic-embed-text"
 _DEFAULT_EMBED_DIM = 768
+
+
+def load_dotenv_values(repo_root: str | Path) -> dict[str, str]:
+    """Read ``<repo_root>/.env`` without mutating ``os.environ``.
+
+    Returns ``{}`` when no ``.env`` file exists. Anchored explicitly to
+    ``repo_root`` — never walks up from the process's CWD, so an MCP client
+    launching the server with a foreign working directory still finds the
+    repo-local ``.env``.
+    """
+    env_file = Path(repo_root) / ".env"
+    if not env_file.is_file():
+        return {}
+    return {k: v for k, v in dotenv_values(env_file).items() if v is not None}
+
+
+class ConfigError(RuntimeError):
+    """Raised when a ``DELFOS_*`` value fails validation, naming the exact variable."""
+
+
+class DelfosSettings(BaseSettings):
+    """Typed, validated view of a merged ``DELFOS_*`` mapping.
+
+    Field names are the lowercased suffix of the matching env var
+    (``DELFOS_EMBED_DIM`` -> ``embed_dim``). ``embed_model``/``embed_dim``
+    default to ``None`` here on purpose: whether the *effective* default is
+    the manifest's recorded value or the hardcoded built-in depends on
+    whether the repo already has an index, which only :func:`resolve_config`
+    knows.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="DELFOS_", extra="ignore")
+
+    embed_model: str | None = None
+    embed_dim: int | None = None
+    embed_base_url: str | None = None
+    embed_api_key: SecretStr | None = None
+    embed_send_dim: bool = False
+
+    llm_model: str | None = None
+    llm_base_url: str | None = None
+    llm_api_key: SecretStr | None = None
+
+    @classmethod
+    def from_mapping(cls, merged: Mapping[str, str]) -> DelfosSettings:
+        """Validate a pre-merged mapping as a pure function of ``merged``.
+
+        ``merged`` is already the fully precedence-resolved set of
+        ``DELFOS_*`` values (real env > repo ``.env`` > ``config.toml``).
+        Every field is passed explicitly — even when absent, as ``None`` or
+        its default — so pydantic-settings' init source takes priority over
+        its own environment source for every field. The result never depends
+        on the real process environment, only on ``merged``.
+        """
+        try:
+            return cls(
+                embed_model=merged.get("DELFOS_EMBED_MODEL"),
+                embed_dim=merged.get("DELFOS_EMBED_DIM"),  # type: ignore[arg-type]
+                embed_base_url=merged.get("DELFOS_EMBED_BASE_URL"),
+                embed_api_key=merged.get("DELFOS_EMBED_API_KEY"),  # type: ignore[arg-type]
+                embed_send_dim=merged.get("DELFOS_EMBED_SEND_DIM", "0"),  # type: ignore[arg-type]
+                llm_model=merged.get("DELFOS_LLM_MODEL"),
+                llm_base_url=merged.get("DELFOS_LLM_BASE_URL"),
+                llm_api_key=merged.get("DELFOS_LLM_API_KEY"),  # type: ignore[arg-type]
+            )
+        except ValidationError as exc:
+            raise ConfigError(_format_validation_error(exc)) from exc
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    lines = [
+        f"DELFOS_{'_'.join(str(p) for p in error['loc']).upper()}: {error['msg']}"
+        for error in exc.errors()
+    ]
+    return "invalid configuration:\n" + "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -61,26 +137,48 @@ def resolve_config(env: Mapping[str, str], *, repo_root: str | Path = ".") -> Se
     the manifest's recorded ``embed`` info (for ``model``/``dim`` only — these
     must match what the index was built with), then built-in defaults. This is
     why a query against an already-indexed repo needs only credentials in the
-    environment.
+    environment. Raises :class:`ConfigError`, naming the exact ``DELFOS_*``
+    variable, if a value fails validation (e.g. a non-numeric
+    ``DELFOS_EMBED_DIM``).
     """
     workspace = Workspace(repo_root)
     merged: dict[str, str] = {**workspace.load_config(), **env}
     manifest = workspace.load_manifest()
     default_model = manifest.embed.model if manifest else _DEFAULT_EMBED_MODEL
     default_dim = manifest.embed.dim if manifest else _DEFAULT_EMBED_DIM
+    settings = DelfosSettings.from_mapping(merged)
     return ServerConfig(
         workspace=workspace,
-        embed_model=merged.get("DELFOS_EMBED_MODEL", default_model),
-        embed_dim=int(merged.get("DELFOS_EMBED_DIM", str(default_dim))),
-        embed_base_url=merged.get("DELFOS_EMBED_BASE_URL"),
-        embed_api_key=merged.get("DELFOS_EMBED_API_KEY"),
-        send_dimensions=merged.get("DELFOS_EMBED_SEND_DIM", "0").strip().lower() in _TRUTHY,
+        embed_model=settings.embed_model or default_model,
+        embed_dim=settings.embed_dim if settings.embed_dim is not None else default_dim,
+        embed_base_url=settings.embed_base_url,
+        embed_api_key=(
+            settings.embed_api_key.get_secret_value() if settings.embed_api_key else None
+        ),
+        send_dimensions=settings.embed_send_dim,
     )
 
 
 def build_embedder(cfg: ServerConfig) -> OpenAIEmbedder:
-    """Construct the OpenAI-compatible embedder from config."""
-    client = OpenAI(base_url=cfg.embed_base_url, api_key=cfg.embed_api_key)
+    """Construct the OpenAI-compatible embedder from config.
+
+    Fails fast with an actionable message naming ``DELFOS_EMBED_API_KEY`` when
+    targeting the real OpenAI API (no ``embed_base_url``) without a key,
+    instead of letting the OpenAI SDK silently fall back to a same-named
+    ``OPENAI_API_KEY`` the user never set for Delfos.
+    """
+    api_key = cfg.embed_api_key
+    if api_key is None:
+        if cfg.embed_base_url is None:
+            raise ConfigError(
+                "no embedding API key configured: set DELFOS_EMBED_API_KEY "
+                "(targeting the OpenAI API requires a key; for a local "
+                "OpenAI-compatible server, also set DELFOS_EMBED_BASE_URL)"
+            )
+        # Local/custom OpenAI-compatible servers (llama.cpp, Ollama, ...)
+        # generally ignore the key, but the client still requires a string.
+        api_key = "delfos-local-placeholder"
+    client = OpenAI(base_url=cfg.embed_base_url, api_key=api_key)
     return OpenAIEmbedder(
         cfg.embed_model,
         dimensions=cfg.embed_dim,
@@ -124,12 +222,19 @@ def planner_config_from_merged(
 
 
 def check_model_match(store: NativeGraphStore, embedder: Embedder) -> None:
-    """Fail fast unless the embedder's model matches the store's index model."""
+    """Fail fast unless the embedder's model AND dimension match the store's index."""
     if store.embedding_model != embedder.model:
         raise RuntimeError(
             f"embedder model {embedder.model!r} does not match index model "
             f"{store.embedding_model!r}; queries must use the model the index "
             f"was built with"
+        )
+    if store.embedding_dim != embedder.dimensions:
+        raise RuntimeError(
+            f"embedder dimension {embedder.dimensions} does not match index "
+            f"dimension {store.embedding_dim}; a stale DELFOS_EMBED_DIM can open "
+            f"the store with the wrong dimension — check it against the indexed "
+            f"model's actual output dimension"
         )
 
 
@@ -144,10 +249,11 @@ class PlannerConfig:
 
 def planner_config_from_env(env: Mapping[str, str]) -> PlannerConfig:
     """Read the `DELFOS_LLM_*` chat-model settings (all optional)."""
+    settings = DelfosSettings.from_mapping(env)
     return PlannerConfig(
-        llm_model=env.get("DELFOS_LLM_MODEL"),
-        llm_base_url=env.get("DELFOS_LLM_BASE_URL"),
-        llm_api_key=env.get("DELFOS_LLM_API_KEY"),
+        llm_model=settings.llm_model,
+        llm_base_url=settings.llm_base_url,
+        llm_api_key=settings.llm_api_key.get_secret_value() if settings.llm_api_key else None,
     )
 
 

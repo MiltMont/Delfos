@@ -17,6 +17,7 @@ from delfos.config import (
     build_planner,
     build_store,
     check_model_match,
+    load_dotenv_values,
     planner_config_from_merged,
     resolve_config,
 )
@@ -146,17 +147,16 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = args.repo
 
     # serve owns its own store/server lifecycle via the MCP entry point, which
-    # re-configures logging for the standalone `delfos-mcp` case; propagate the
-    # verbose flag through the environment so `delfos -v serve` keeps DEBUG.
+    # re-configures logging for the standalone `delfos-mcp` case; pass the
+    # verbose flag through explicitly so `delfos -v serve` keeps DEBUG.
     if args.command == "serve":
-        os.environ["DELFOS_REPO"] = repo_root
-        os.environ["DELFOS_VERBOSE"] = "1" if args.verbose else "0"
         from delfos.mcp.__main__ import main as serve_main
 
-        serve_main()
+        serve_main(repo_root, verbose=args.verbose)
         return 0
 
-    cfg = resolve_config(os.environ, repo_root=repo_root)
+    merged_env = {**load_dotenv_values(repo_root), **os.environ}
+    cfg = resolve_config(merged_env, repo_root=repo_root)
 
     if args.command == "doctor":
         manifest = cfg.workspace.load_manifest()
@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "reconstruct":
             embedder = build_embedder(cfg)
             check_model_match(store, embedder)
-            planner = build_planner(planner_config_from_merged(os.environ, repo_root=repo_root))
+            planner = build_planner(planner_config_from_merged(merged_env, repo_root=repo_root))
             service = ReconstructionService(store, embedder, planner, seed_k=args.k)
             print(render_reconstruct(service.reconstruct(args.query, args.budget)))
         else:  # pragma: no cover - argparse `required=True` guards this
