@@ -17,14 +17,19 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          enable-cache: true
       - name: Install dependencies
-        run: uv sync
+        # Lint/type-check never import the compiled _delfos extension (a
+        # checked-in delfos/_delfos.pyi stub covers pyright), so skip building
+        # and installing the project itself — it's the slowest part of `uv sync`.
+        run: uv sync --no-install-project
       - name: Ruff lint
-        run: uv run ruff check .
+        # --no-sync: `uv run` auto-syncs (and would rebuild the project) otherwise.
+        run: uv run --no-sync ruff check .
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run --no-sync ruff format --check .
       - name: Pyright
-        run: uv run pyright
+        run: uv run --no-sync pyright
 
   test:
     strategy:
@@ -32,19 +37,34 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      FC_CACHE_DIR: ${{ github.workspace }}/.fc-cache
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          enable-cache: true
+      - name: Cache CMake FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.FC_CACHE_DIR }}
+          key: fc-deps-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            fc-deps-${{ matrix.os }}-
       - name: Install dependencies
-        run: uv sync
+        # The project itself gets built by the editable install below, so
+        # skip building it here to avoid compiling the C++ extension twice.
+        run: uv sync --no-install-project
       - name: Build and install extension (editable)
-        run: uv pip install -e .
+        run: >
+          uv pip install -e .
+          --config-settings=cmake.define.FETCHCONTENT_BASE_DIR=${{ env.FC_CACHE_DIR }}
       - name: Pytest
-        run: uv run pytest
+        # --no-sync: `uv run` auto-syncs (and would rebuild the project) otherwise.
+        run: uv run --no-sync pytest
       - name: CMake configure (debug, ASan+UBSan)
-        run: cmake --preset debug
+        run: cmake --preset debug -DFETCHCONTENT_BASE_DIR=${{ env.FC_CACHE_DIR }}
       - name: CMake build
         run: cmake --build build/debug
       - name: Ctest
