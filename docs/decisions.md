@@ -30,7 +30,7 @@ exists. Every layer is shaped by it.
 The walk deepens one path — expanding the single best candidate per hop and
 backtracking when a branch dries up — rather than fanning out breadth-first.
 
-**Why:** faithful to Figure 9 of the paper. One expansion per planner step keeps
+**Why:** faithful to the paper's LLM-driven traversal. One expansion per planner step keeps
 the walk cheap and the reasoning legible, and makes `budget` a hard ceiling on
 planner calls.
 
