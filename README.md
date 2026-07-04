@@ -33,6 +33,36 @@ touches the C++ engine directly.
 - **`delfos.indexer`** — the construction pipeline (`parser`, `extractor`,
   `embedder`, `pipeline`) that turns a repository into graph nodes and edges.
 
+## Configuration
+
+Delfos is configured via `DELFOS_*` environment variables, resolved with this
+precedence (highest first):
+
+1. Real environment variables
+2. A `.env` file at the repo root passed to `--repo` / `DELFOS_REPO` — loaded
+   explicitly at startup (copy `.env.example` to `.env` and edit)
+3. `.delfos/config.toml` (non-secret settings only — keep API keys out of it)
+4. `.delfos/manifest.json`, recorded at index time (`embed.model`/`embed.dim`
+   only — these must match what the index was built with)
+5. Built-in defaults (`nomic-embed-text`, dim 768)
+
+| Variable | Purpose |
+|---|---|
+| `DELFOS_EMBED_MODEL` | Embedding model name |
+| `DELFOS_EMBED_DIM` | Embedding output dimension (must match the model) |
+| `DELFOS_EMBED_BASE_URL` | OpenAI-compatible embedding endpoint (unset = OpenAI) |
+| `DELFOS_EMBED_API_KEY` | Embedding endpoint API key (required when `DELFOS_EMBED_BASE_URL` is unset) |
+| `DELFOS_LLM_MODEL` | Chat model for the `reconstruct` hop planner |
+| `DELFOS_LLM_BASE_URL` | OpenAI-compatible chat endpoint (unset = OpenAI) |
+| `DELFOS_LLM_API_KEY` | Chat endpoint API key |
+| `DELFOS_REPO` | Repo whose `.delfos/` workspace to serve (`delfos-mcp` only) |
+| `DELFOS_VERBOSE` | `1` for per-file DEBUG logging |
+
+A query against an already-indexed repo needs only credentials — the model and
+dimension come from the manifest. `DELFOS_EMBED_BASE_URL` and
+`DELFOS_LLM_BASE_URL` each point at their own endpoint independently; there is
+no fallback between them.
+
 ## Development
 
 This project uses [uv](https://docs.astral.sh/uv/).
