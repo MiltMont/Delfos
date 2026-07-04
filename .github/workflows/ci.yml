@@ -24,11 +24,12 @@ jobs:
         # and installing the project itself — it's the slowest part of `uv sync`.
         run: uv sync --no-install-project
       - name: Ruff lint
-        run: uv run ruff check .
+        # --no-sync: `uv run` auto-syncs (and would rebuild the project) otherwise.
+        run: uv run --no-sync ruff check .
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run --no-sync ruff format --check .
       - name: Pyright
-        run: uv run pyright
+        run: uv run --no-sync pyright
 
   test:
     strategy:
@@ -60,7 +61,8 @@ jobs:
           uv pip install -e .
           --config-settings=cmake.define.FETCHCONTENT_BASE_DIR=${{ env.FC_CACHE_DIR }}
       - name: Pytest
-        run: uv run pytest
+        # --no-sync: `uv run` auto-syncs (and would rebuild the project) otherwise.
+        run: uv run --no-sync pytest
       - name: CMake configure (debug, ASan+UBSan)
         run: cmake --preset debug -DFETCHCONTENT_BASE_DIR=${{ env.FC_CACHE_DIR }}
       - name: CMake build
