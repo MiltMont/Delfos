@@ -11,14 +11,26 @@
 // USearch: header-only HNSW library (fetched via FetchContent).
 // Suppress warnings from third-party headers — we build our own code with
 // -Wall -Wextra -Werror but cannot hold vendored libraries to the same standard.
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter"
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #pragma clang diagnostic ignored "-Wshadow"
 #pragma clang diagnostic ignored "-W#warnings"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wcpp"
+#endif
 #include <usearch/index_dense.hpp>
 #include <usearch/index_plugins.hpp>
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include "delfos/types.hpp"
 
