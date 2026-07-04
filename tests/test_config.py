@@ -9,6 +9,7 @@ from delfos.config import (
     ConfigError,
     DelfosSettings,
     PlannerConfig,
+    build_embedder,
     build_planner,
     load_dotenv_values,
     planner_config_from_env,
@@ -154,3 +155,18 @@ def test_load_dotenv_values_absent_file_returns_empty(tmp_path: Path) -> None:
 def test_load_dotenv_values_ignores_keys_without_a_value(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text("DELFOS_EMBED_MODEL=from-dotenv\nBARE_KEY\n")
     assert load_dotenv_values(tmp_path) == {"DELFOS_EMBED_MODEL": "from-dotenv"}
+
+
+def test_build_embedder_raises_actionable_error_without_key_or_base_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    cfg = resolve_config({}, repo_root=tmp_path)
+    with pytest.raises(ConfigError, match="DELFOS_EMBED_API_KEY"):
+        build_embedder(cfg)
+
+
+def test_build_embedder_allows_missing_key_with_local_base_url(tmp_path: Path) -> None:
+    cfg = resolve_config({"DELFOS_EMBED_BASE_URL": "http://localhost:8081/v1"}, repo_root=tmp_path)
+    embedder = build_embedder(cfg)  # no raise
+    assert embedder.model == cfg.embed_model

@@ -160,8 +160,25 @@ def resolve_config(env: Mapping[str, str], *, repo_root: str | Path = ".") -> Se
 
 
 def build_embedder(cfg: ServerConfig) -> OpenAIEmbedder:
-    """Construct the OpenAI-compatible embedder from config."""
-    client = OpenAI(base_url=cfg.embed_base_url, api_key=cfg.embed_api_key)
+    """Construct the OpenAI-compatible embedder from config.
+
+    Fails fast with an actionable message naming ``DELFOS_EMBED_API_KEY`` when
+    targeting the real OpenAI API (no ``embed_base_url``) without a key,
+    instead of letting the OpenAI SDK silently fall back to a same-named
+    ``OPENAI_API_KEY`` the user never set for Delfos.
+    """
+    api_key = cfg.embed_api_key
+    if api_key is None:
+        if cfg.embed_base_url is None:
+            raise ConfigError(
+                "no embedding API key configured: set DELFOS_EMBED_API_KEY "
+                "(targeting the OpenAI API requires a key; for a local "
+                "OpenAI-compatible server, also set DELFOS_EMBED_BASE_URL)"
+            )
+        # Local/custom OpenAI-compatible servers (llama.cpp, Ollama, ...)
+        # generally ignore the key, but the client still requires a string.
+        api_key = "delfos-local-placeholder"
+    client = OpenAI(base_url=cfg.embed_base_url, api_key=api_key)
     return OpenAIEmbedder(
         cfg.embed_model,
         dimensions=cfg.embed_dim,
