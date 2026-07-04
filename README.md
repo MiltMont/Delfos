@@ -9,13 +9,14 @@ required.
 
 Memory access is an iterative, LLM-driven traversal of a persistent
 **Cue → Tag → Content** graph rather than one-shot retrieval. See
-[`CLAUDE.md`](CLAUDE.md) for the architecture and
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the architecture overview and
 [`docs/decisions.md`](docs/decisions.md) for the design decisions and rationale.
 
 ## Architecture
 
 Two layers meet at a single boundary — the `GraphStore` ABC. No component ever
-touches the C++ engine directly.
+touches the C++ engine directly. The summary below is the short version; the
+full contributor-facing walkthrough is [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 - **`libdelfos/`** — the C++ storage engine: an in-memory CSR directed property
   graph (`graph.hpp`), an HNSW vector index over USearch (`vector_index.hpp`),
@@ -24,9 +25,10 @@ touches the C++ engine directly.
   nanobind bindings.
 - **`delfos.schema`** — the code-specific Cue-Tag-Content schema as Pydantic
   models (`CueNode`, `TagNode`, `ContentNode`), the `Edge` model, and the closed
-  enum vocabularies. Every node carries `source_file` + `git_sha` provenance
-  (for delete-and-reindex) and optional embedding metadata (`embedding_model`)
-  for embedding versioning.
+  enum vocabularies. Cue and content nodes carry `source_file` + `git_sha`
+  provenance (for delete-and-reindex; tags are shared across files and carry
+  none) and optional embedding metadata (`embedding_model`) for embedding
+  versioning.
 - **`delfos.store`** — the `GraphStore` abstract base class (the single database
   boundary every other component goes through) and `NativeGraphStore`, the
   concrete backend over the C++ engine.
