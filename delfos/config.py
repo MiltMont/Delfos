@@ -205,12 +205,19 @@ def planner_config_from_merged(
 
 
 def check_model_match(store: NativeGraphStore, embedder: Embedder) -> None:
-    """Fail fast unless the embedder's model matches the store's index model."""
+    """Fail fast unless the embedder's model AND dimension match the store's index."""
     if store.embedding_model != embedder.model:
         raise RuntimeError(
             f"embedder model {embedder.model!r} does not match index model "
             f"{store.embedding_model!r}; queries must use the model the index "
             f"was built with"
+        )
+    if store.embedding_dim != embedder.dimensions:
+        raise RuntimeError(
+            f"embedder dimension {embedder.dimensions} does not match index "
+            f"dimension {store.embedding_dim}; a stale DELFOS_EMBED_DIM can open "
+            f"the store with the wrong dimension — check it against the indexed "
+            f"model's actual output dimension"
         )
 
 
