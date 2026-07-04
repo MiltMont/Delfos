@@ -31,13 +31,24 @@ Memory for LLM Agents"](https://arxiv.org/abs/2606.06036) (arXiv 2606.06036):
 memory access is an iterative, LLM-driven traversal of a persistent graph, not
 one-shot retrieval.
 
+See `ARCHITECTURE.md` for the full contributor-facing walkthrough.
+
 ## Architecture
 
 ### Two layers, one boundary
 
 Everything goes through `GraphStore` (`delfos/store/base.py`). No component
-(indexer, MCP tools, future CLI) should ever touch the C++ engine directly.
+(indexer, MCP tools, CLI) should ever touch the C++ engine directly.
 `NativeGraphStore` is the concrete backend; `DuckDBGraphStore` has been removed.
+
+Python packages: `schema` (Pydantic node/edge models), `store` (`GraphStore`
+ABC + `NativeGraphStore`), `indexer` (parser → extractor → embedder →
+pipeline), `reconstruct` (read-path service + `HopPlanner`), `scip` (SCIP
+generation + cross-reference service), `mcp` (FastMCP server), `cli` (the
+`delfos` command: `index`, `status`, `doctor`, `search`, `reconstruct`,
+`serve`), `workspace.py` (the per-repo `.delfos/` workspace: store snapshot,
+`index.scip`, `manifest.json`, `config.toml`), and `config.py` (`DELFOS_*`
+env-driven startup config).
 
 ### The graph: Cue → Tag → Content
 
@@ -69,22 +80,30 @@ The C++ engine (`libdelfos/`) provides:
 The Python extension `delfos._delfos` (nanobind) exposes `Store` and `NodeData`
 to `NativeGraphStore`.
 
-### MCP tool shape (target state)
+### MCP surface (`delfos/mcp/`)
 
-**Read path (active reconstruction):**
-- `search(query) → List[CueNode]` — vector search on cue nodes
-- `traverse_forward(cue_ids, tag_filters) → List[ContentNode]`
-- `traverse_reverse(content_ids) → List[CueNode]`
-- `reconstruct(query, budget) → List[ContentNode]` — depth-first traversal
+The server exposes graph *primitives* plus a *prompt* — the calling agent is
+the planner; no server-side planner LLM runs:
 
-**Write path:**
-- `index(repo_path)` — trigger the construction pipeline
+- **Walk tools:** `search`, `traverse_forward`, `traverse_reverse` — return
+  compact `NodeSummary`s; `fetch` returns full `ContentDetail` bodies.
+  Embeddings are never serialized back to the agent.
+- **SCIP tools:** `references`, `implementations`, `type_definition` — content
+  node IDs double as SCIP symbol strings, so lookup is a direct key access.
+- **Prompt:** `reconstruct` — teaches the depth-first walk discipline
+  (seed → expand → descend one → respect budget → stop).
+
+The internal `reconstruct` engine (`delfos/reconstruct/`, `HopPlanner`) is used
+by the CLI and tests; it is **not** an MCP tool. Indexing runs via the CLI
+(`delfos index`), not over MCP.
 
 ### Provenance and stale-handling
 
-Every node and edge stores `source_file` and `git_sha`. The stale strategy is
-**delete-and-reindex**: when a file's git SHA changes, all nodes/edges from that
-file are hard-deleted and the file is re-processed from scratch.
+Every cue and content node stores `source_file` and `git_sha`; tags are shared
+across files and carry no provenance (edge provenance is optional). The stale
+strategy is **delete-and-reindex**: when a file's git SHA changes, all of its
+provenanced nodes and file-scoped edges are hard-deleted and the file is
+re-processed from scratch.
 
 ### Crash recovery
 
