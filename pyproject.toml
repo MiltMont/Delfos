@@ -35,6 +35,7 @@ build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 cmake.build-type = "Release"
+wheel.py-api = "cp312"
 cmake.args = [
     "-DDELFOS_BUILD_BINDINGS=ON",
     "-DDELFOS_BUILD_TESTS=OFF",
