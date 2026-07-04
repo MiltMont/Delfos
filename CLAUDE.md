@@ -102,7 +102,7 @@ present whenever `embedding` is set.
 
 ## Key Decisions (see `docs/decisions.md`)
 
-- `reconstruct` uses **depth-first sequential** traversal (per Figure 9 of arXiv 2606.06036)
+- `reconstruct` uses **depth-first sequential** traversal (per arXiv 2606.06036)
 - No symbol-level diffing, tombstones, or rename detection in v1
 - Embedding model is configured at store construction; never hard-coded
 - Pyright strict mode is non-negotiable; `extra="forbid"` on all Pydantic models

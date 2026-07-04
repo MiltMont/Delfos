@@ -17,12 +17,12 @@ out of date — both are fully implemented and covered by tests under `tests/`.
 - Standard commands (already documented in `CLAUDE.md`): `uv run ruff check .`,
   `uv run ruff format --check .`, `uv run pyright` (strict mode), `uv run pytest`.
 
-### C++ toolchain (for `libdelfos`, see `docs/libdelfos-plan.md`)
-The cloud VM has the toolchain the plan requires preinstalled: `clang++` 18
-(LLVM; the plan standardizes on clang, not GCC), `cmake` 3.28, `ninja`, and the
-clang sanitizer runtimes (ASan/UBSan via `libclang-rt-18-dev`). The plan's
+### C++ toolchain (for `libdelfos`, see `CMakePresets.json` and `CLAUDE.md`)
+The cloud VM has the toolchain preinstalled: `clang++` 18
+(LLVM; the build standardizes on clang, not GCC), `cmake` 3.28, `ninja`, and the
+clang sanitizer runtimes (ASan/UBSan via `libclang-rt-18-dev`).
 `CMakePresets.json` uses the Ninja generator with `clang++`. Build/test commands
-are in `docs/libdelfos-plan.md` section 11 (`cmake --preset debug`, etc.).
+are in `CLAUDE.md` (`cmake --preset debug`, `cmake --build build/debug`, etc.).
 
 Non-obvious gotchas:
 - `clang++` auto-selects the **GCC 14** libstdc++ install (highest version
