@@ -3,6 +3,8 @@ name = "delfos"
 version = "0.1.0"
 description = "Graph memory MCP server for codebases (MRAgent-style reconstruction)"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Milton Montiel", email = "miltgonmont@gmail.com" }
 ]
@@ -17,6 +19,11 @@ dependencies = [
     "protobuf>=7.35.1",
     "python-dotenv>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/MiltMont/Delfos"
+Repository = "https://github.com/MiltMont/Delfos"
+Issues = "https://github.com/MiltMont/Delfos/issues"
 
 [project.scripts]
 delfos = "delfos.cli.app:main"
