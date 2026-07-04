@@ -101,9 +101,7 @@ def test_load_config_maps_toml_to_env_keys(tmp_path: Path) -> None:
     }
 
 
-def test_load_config_warns_on_unknown_key(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_load_config_warns_on_unknown_key(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     ws = Workspace(tmp_path)
     ws.dir.mkdir(parents=True)
     ws.config_path.write_text('[embed]\nmodel = "m"\ntypo_field = "x"\n')
