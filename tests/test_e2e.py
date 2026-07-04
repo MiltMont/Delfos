@@ -5,7 +5,7 @@ Exercises the full pipeline:
   → vector_search + neighbors
 
 Uses a deterministic SHA-256 hash embedder so no API key or network access
-is needed.  Acceptance criteria from docs/libdelfos-plan.md §10 Phase 5:
+is needed.  Acceptance criteria (native-store performance targets):
 
   - Indexer + NativeGraphStore index the Delfos repo itself end-to-end  ✓
   - index() completes < 30 s                                             ✓ (verified by test)

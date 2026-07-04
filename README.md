@@ -9,8 +9,8 @@ required.
 
 Memory access is an iterative, LLM-driven traversal of a persistent
 **Cue → Tag → Content** graph rather than one-shot retrieval. See
-[`docs/libdelfos-plan.md`](docs/libdelfos-plan.md) and
-[`CLAUDE.md`](CLAUDE.md) for the architecture and design decisions.
+[`CLAUDE.md`](CLAUDE.md) for the architecture and
+[`docs/decisions.md`](docs/decisions.md) for the design decisions and rationale.
 
 ## Architecture
 
