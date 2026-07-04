@@ -8,12 +8,23 @@
 #include <vector>
 
 // FlatBuffers runtime (suppress third-party warnings).
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter"
 #pragma clang diagnostic ignored "-Wshadow"
 #pragma clang diagnostic ignored "-W#warnings"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wcpp"
+#endif
 #include <flatbuffers/flatbuffers.h>
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 // Generated FlatBuffers header (libdelfos/flatbuffers/delfos_generated.h).
 // The include path libdelfos/flatbuffers/ is added to delfos_core by CMake.
