@@ -3,8 +3,11 @@ the graph↔SCIP consistency verdict, and ``config.toml`` parsing."""
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
 
 from delfos.workspace import (
     EmbedInfo,
@@ -96,3 +99,37 @@ def test_load_config_maps_toml_to_env_keys(tmp_path: Path) -> None:
         "DELFOS_EMBED_SEND_DIM": "1",
         "DELFOS_LLM_MODEL": "qwen2.5",
     }
+
+
+def test_load_config_warns_on_unknown_key(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    ws = Workspace(tmp_path)
+    ws.dir.mkdir(parents=True)
+    ws.config_path.write_text('[embed]\nmodel = "m"\ntypo_field = "x"\n')
+    with caplog.at_level(logging.WARNING, logger="delfos.workspace"):
+        result = ws.load_config()
+    assert result == {"DELFOS_EMBED_MODEL": "m"}
+    assert any("typo_field" in r.getMessage() for r in caplog.records)
+
+
+def test_load_config_warns_on_unknown_section(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    ws = Workspace(tmp_path)
+    ws.dir.mkdir(parents=True)
+    ws.config_path.write_text('[bogus]\nfoo = "bar"\n')
+    with caplog.at_level(logging.WARNING, logger="delfos.workspace"):
+        ws.load_config()
+    assert any("bogus" in r.getMessage() for r in caplog.records)
+
+
+def test_load_config_does_not_warn_on_known_keys(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    ws = Workspace(tmp_path)
+    ws.dir.mkdir(parents=True)
+    ws.config_path.write_text('[embed]\nmodel = "m"\ndim = 8\n')
+    with caplog.at_level(logging.WARNING, logger="delfos.workspace"):
+        ws.load_config()
+    assert caplog.records == []
