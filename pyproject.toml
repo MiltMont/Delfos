@@ -46,6 +46,14 @@ cmake.args = [
 ]
 wheel.packages = ["delfos"]
 
+[tool.cibuildwheel]
+# One wheel per platform (abi3), so only build against the floor Python version.
+build = "cp312-*"
+skip = "*-musllinux*"
+manylinux-x86_64-image = "manylinux_2_28"
+test-requires = "pytest"
+test-command = "pytest {project}/tests"
+
 [dependency-groups]
 dev = [
     "ruff>=0.6.0",
