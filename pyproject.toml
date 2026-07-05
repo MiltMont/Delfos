@@ -1,6 +1,6 @@
 [project]
 name = "delfos"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Graph memory MCP server for codebases (MRAgent-style reconstruction)"
 readme = "README.md"
 license = "Apache-2.0"
@@ -45,6 +45,9 @@ cmake.args = [
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
 ]
 wheel.packages = ["delfos"]
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+
+[tool.setuptools_scm]
 
 [tool.cibuildwheel]
 # One wheel per platform (abi3), so only build against the floor Python version.
