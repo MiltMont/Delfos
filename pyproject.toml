@@ -9,6 +9,16 @@ authors = [
     { name = "Milton Montiel", email = "miltgonmont@gmail.com" }
 ]
 requires-python = ">=3.12"
+keywords = ["mcp", "graph", "memory", "codebase", "llm", "agent", "embeddings"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+]
 dependencies = [
     "openai>=1.0.0",
     "pydantic>=2.9.0",
