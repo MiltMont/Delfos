@@ -73,7 +73,7 @@ Claude Code / Cursor, add it to your `mcpServers` config:
   "mcpServers": {
     "delfos": {
       "command": "delfos-mcp",
-      "env": { "DELFOS_REPO": "/path/to/repo" }
+      "env": { "DELFOS_REPO": "/absolute/path/to/repo" }
     }
   }
 }
