@@ -52,7 +52,11 @@ build = "cp312-*"
 skip = "*-musllinux*"
 manylinux-x86_64-image = "manylinux_2_28"
 test-requires = "pytest"
-test-command = "pytest {project}/tests"
+test-sources = ["tests"]
+# test_e2e.py indexes the repo's own source tree as fixture data (REPO_ROOT =
+# Path(__file__).parent.parent), which isn't present in the isolated
+# test-sources copy. It's already covered by ci.yml against the full checkout.
+test-command = "pytest ./tests --ignore=tests/test_e2e.py"
 
 [dependency-groups]
 dev = [
