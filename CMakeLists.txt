@@ -79,7 +79,15 @@ endif()
 option(DELFOS_BUILD_BINDINGS "Build nanobind Python module" OFF)
 if(DELFOS_BUILD_BINDINGS)
     # nanobind-config.cmake requires Python to be found before it is included.
-    find_package(Python 3 COMPONENTS Interpreter Development REQUIRED)
+    # Development.Module (not the full Development, which also pulls in
+    # Development.Embed) is nanobind's own recommended component set for
+    # building an extension module — manylinux images don't ship the
+    # embeddable libpython that Development.Embed requires, so requesting
+    # plain Development fails there. Development.SABIModule provides the
+    # Python::SABIModule target, without which nanobind_add_module(...
+    # STABLE_ABI ...) silently builds a regular (non-limited-API) module
+    # instead of failing loudly.
+    find_package(Python 3 COMPONENTS Interpreter Development.Module Development.SABIModule REQUIRED)
 
     # Locate nanobind: prefer the installed Python package (scikit-build-core
     # mode), fall back to FetchContent for manual cmake --preset builds.
