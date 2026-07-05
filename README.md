@@ -12,6 +12,91 @@ Memory access is an iterative, LLM-driven traversal of a persistent
 [`ARCHITECTURE.md`](ARCHITECTURE.md) for the architecture overview and
 [`docs/decisions.md`](docs/decisions.md) for the design decisions and rationale.
 
+## Getting Started
+
+### 1. Install
+
+```bash
+pip install delfos      # or: uv add delfos
+```
+
+Delfos ships prebuilt wheels for Python 3.12+ on Linux and macOS, so no C++
+toolchain is required. To enable the SCIP cross-reference tools (`references`,
+`implementations`, `type_definition`), also install
+[`scip-python`](https://github.com/sourcegraph/scip-python):
+
+```bash
+npm install -g @sourcegraph/scip-python
+```
+
+### 2. Configure credentials
+
+Delfos needs an embedding endpoint (and, for `reconstruct`, a chat endpoint).
+Create a `.env` at the root of the repo you want to index — it is loaded
+automatically at startup, anchored to that repo. Copy
+[`.env.example`](.env.example) and edit.
+
+Against **hosted OpenAI**, an API key is the only required setting (the model
+and dimension default to `nomic-embed-text` / 768, or whatever your index was
+built with):
+
+```bash
+DELFOS_EMBED_API_KEY=sk-...
+```
+
+Against a **local OpenAI-compatible server** (llama.cpp, Ollama, LM Studio),
+point the base URLs at it — see [`.env.example`](.env.example) for a full
+llama.cpp walkthrough. The complete list of `DELFOS_*` variables and their
+precedence is in [Configuration](#configuration) below.
+
+### 3. Index your repo
+
+```bash
+delfos index /path/to/repo          # build the .delfos/ workspace
+delfos doctor --repo /path/to/repo  # verify workspace + toolchain
+delfos status --repo /path/to/repo  # inspect the manifest and store
+```
+
+Indexing writes a `.delfos/` workspace inside the repo: the graph store
+snapshot, `index.scip`, and a `manifest.json` recording the embedding model and
+dimension the index was built with. Queries against it need only credentials —
+the model and dimension come from the manifest.
+
+### 4. Use it from an agent (MCP)
+
+The primary way to consume Delfos is as an MCP server. Point your agent at the
+`delfos-mcp` console script and set `DELFOS_REPO` to the repo you indexed. For
+Claude Code / Cursor, add it to your `mcpServers` config:
+
+```json
+{
+  "mcpServers": {
+    "delfos": {
+      "command": "delfos-mcp",
+      "env": { "DELFOS_REPO": "/path/to/repo" }
+    }
+  }
+}
+```
+
+The server runs read-only over stdio and exposes the walk tools (`search`,
+`traverse_forward`, `traverse_reverse`, `fetch`), the SCIP tools, and the
+`reconstruct` prompt that teaches the depth-first traversal discipline.
+Credentials can live in the repo's `.env` (loaded automatically) rather than in
+the config above.
+
+### 5. Or query from the terminal
+
+You can also explore the graph directly, without an agent:
+
+```bash
+delfos search "how are edges deleted"
+delfos reconstruct "the stale-file reindex flow" --budget 3
+```
+
+`search` returns the semantic seed cues; `reconstruct` runs the LLM-driven
+depth-first walk (and needs the `DELFOS_LLM_*` chat endpoint configured).
+
 ## Architecture
 
 Two layers meet at a single boundary — the `GraphStore` ABC. No component ever
