@@ -709,3 +709,47 @@ TEST_CASE("full cue-tag-content graph shape survives rebuild", "[graph][schema]"
     REQUIRE(lang_inc.size() == 1u);
     REQUIRE(g.edge(lang_inc[0]).type == EdgeType::TaggedWith);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// nodes_by_type
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("nodes_by_type returns live nodes of the requested type") {
+    Graph g;
+    g.upsert_node(make_cue("cue:1"));
+    g.upsert_node(make_tag("tag:language:cpp"));
+    g.upsert_node(make_tag("tag:arch_layer:storage"));
+    g.upsert_node(make_content("content:1"));
+
+    auto tags = g.nodes_by_type(NodeType::Tag);
+
+    REQUIRE(tags.size() == 2);
+    for (const auto& n : tags) {
+        REQUIRE(n.type == NodeType::Tag);
+    }
+}
+
+TEST_CASE("nodes_by_type excludes soft-deleted and hard-deleted nodes") {
+    Graph g;
+    g.upsert_node(make_tag("tag:a"));
+    NodeData soft = make_tag("tag:b");
+    soft.status = NodeStatus::Deleted;
+    g.upsert_node(soft);
+    g.upsert_node(make_tag("tag:c"));
+    g.delete_node(g.find("tag:c"));
+
+    auto tags = g.nodes_by_type(NodeType::Tag);
+
+    REQUIRE(tags.size() == 1);
+    REQUIRE(tags[0].id == "tag:a");
+}
+
+TEST_CASE("nodes_by_type works on a dirty graph without rebuild") {
+    Graph g;
+    g.upsert_node(make_tag("tag:a"));
+    REQUIRE(g.dirty());
+
+    auto tags = g.nodes_by_type(NodeType::Tag);
+
+    REQUIRE(tags.size() == 1);
+}
