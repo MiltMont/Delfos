@@ -66,6 +66,14 @@ annotate(
 ) -> AnnotateResult
 ```
 
+The parameter *names* `arch_layer` and `pattern_type` encode the tag
+*category*: the service maps them to `TagCategory.ARCH_LAYER` /
+`TagCategory.PATTERN_TYPE` internally, so agents can only write the two
+semantic categories (the three mechanical ones remain indexer-owned). The
+`str` is the tag *value*, which is an open string by the vocabulary decision
+above — `TagNode.value` is untyped (`str`) in both the Pydantic schema and the
+C++ engine; only the category is an enum.
+
 `AnnotateResult` (a `delfos/mcp/views.py` view model) reports the cue/tag ids
 written, phrases dropped by normalization, and
 `existing_values: dict[str, list[str]]` for both semantic tag categories.
