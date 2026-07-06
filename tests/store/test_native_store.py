@@ -386,3 +386,39 @@ def test_uncommitted_state_lost_on_reopen(tmp_path: Path) -> None:
     s2.initialize()
     assert s2.get_node("cue-1") is None
     s2.close()
+
+
+def test_list_tag_values_returns_sorted_distinct_values_for_category(tmp_path: Path) -> None:
+    store = NativeGraphStore(tmp_path / "g", embedding_dim=8, embedding_model="m")
+    store.initialize()
+    now = datetime(2026, 7, 5, 12, 0, 0)
+    with store.transaction():
+        store.upsert_node(
+            TagNode(
+                id="tag:arch_layer:storage",
+                indexed_at=now,
+                category=TagCategory.ARCH_LAYER,
+                value="storage",
+            )
+        )
+        store.upsert_node(
+            TagNode(
+                id="tag:arch_layer:cli",
+                indexed_at=now,
+                category=TagCategory.ARCH_LAYER,
+                value="cli",
+            )
+        )
+        store.upsert_node(
+            TagNode(
+                id="tag:pattern_type:factory",
+                indexed_at=now,
+                category=TagCategory.PATTERN_TYPE,
+                value="factory",
+            )
+        )
+
+    assert store.list_tag_values(TagCategory.ARCH_LAYER) == ["cli", "storage"]
+    assert store.list_tag_values(TagCategory.PATTERN_TYPE) == ["factory"]
+    assert store.list_tag_values(TagCategory.LANGUAGE) == []
+    store.close()

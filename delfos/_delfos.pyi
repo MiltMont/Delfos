@@ -96,6 +96,7 @@ class Store:
 
     # Reads
     def get_node(self, node_id: str) -> NodeData | None: ...
+    def list_nodes_by_type(self, node_type: int) -> list[NodeData]: ...
     def neighbors(
         self,
         node_id: str,
