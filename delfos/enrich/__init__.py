@@ -1,5 +1,5 @@
 """Delfos write path: agent-driven enrichment (concept cues + semantic tags)."""
 
-from .service import EnrichmentError
+from .service import AnnotationOutcome, EnrichmentError, EnrichmentService
 
-__all__ = ["EnrichmentError"]
+__all__ = ["AnnotationOutcome", "EnrichmentError", "EnrichmentService"]
