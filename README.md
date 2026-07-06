@@ -79,11 +79,13 @@ Claude Code / Cursor, add it to your `mcpServers` config:
 }
 ```
 
-The server runs read-only over stdio and exposes the walk tools (`search`,
-`traverse_forward`, `traverse_reverse`, `fetch`), the SCIP tools, and the
-`reconstruct` prompt that teaches the depth-first traversal discipline.
-Credentials can live in the repo's `.env` (loaded automatically) rather than in
-the config above.
+The server runs over stdio and exposes the walk tools (`search`,
+`traverse_forward`, `traverse_reverse`, `fetch`), the SCIP tools, a write tool
+(`annotate`, for agent-supplied concept cues and `arch_layer`/`pattern_type`
+tags), and two prompts: `reconstruct` (teaches the depth-first traversal
+discipline) and `enrich` (teaches the `annotate` write-back discipline).
+Credentials can live in the repo's `.env` (loaded automatically) rather than
+in the config above.
 
 ### 5. Or query from the terminal
 
