@@ -199,9 +199,10 @@ no foreign-key indirection. The MCP server exposes these as three more tools
 - **`delfos/cli/`** — the `delfos` command: `index`, `status`, `doctor`,
   `search`, `reconstruct`, `serve`. Every command anchors on a repo's
   `.delfos/` workspace.
-- **`delfos/mcp/`** — the FastMCP read server (`delfos-mcp` / `delfos serve`).
-  Tool logic lives in plain `_`-prefixed functions so it's unit-testable
-  without an MCP transport; `build_server` registers thin wrappers.
+- **`delfos/mcp/`** — the FastMCP graph server (`delfos-mcp` / `delfos serve`):
+  the read tools plus the `annotate` write tool. Tool logic lives in plain
+  `_`-prefixed functions so it's unit-testable without an MCP transport;
+  `build_server` registers thin wrappers.
 - **`delfos/config.py`** — env-driven startup configuration (`DELFOS_*`
   variables; precedence documented in the README). This is also where the
   embedding-model startup check lives.
