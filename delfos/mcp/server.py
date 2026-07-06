@@ -1,20 +1,23 @@
-"""FastMCP read server: four graph tools + a reconstruct prompt.
+"""FastMCP read server: graph + annotate tools, a reconstruct and enrich prompt.
 
 Tool logic lives in plain ``_``-prefixed functions so it is unit-testable
 without an MCP transport; :func:`build_server` registers thin wrappers. The
 calling agent is the planner — the server runs no planner LLM. The ``reconstruct``
-prompt teaches the depth-first walk the agent drives.
+prompt teaches the depth-first walk the agent drives; the ``enrich`` prompt
+teaches the agent to write back concept cues and semantic tags.
 """
 
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from delfos.enrich import EnrichmentService
 from delfos.reconstruct import ReconstructionService, TagFilter
 from delfos.schema import TagCategory
 from delfos.scip.service import ScipService
 
 from .views import (
+    AnnotateResult,
     ContentDetail,
     NodeSummary,
     ScipReference,
@@ -23,6 +26,7 @@ from .views import (
     content_to_summary,
     cue_to_summary,
     occurrence_to_reference,
+    outcome_to_result,
     relationship_to_relation,
 )
 
@@ -75,6 +79,25 @@ def _fetch(service: ReconstructionService, ids: list[str]) -> list[ContentDetail
     return [content_to_detail(c) for c in service.fetch(ids)]
 
 
+_ENRICH_UNAVAILABLE = "enrichment unavailable: the server was built without an EnrichmentService."
+
+
+def _annotate(
+    enrich: EnrichmentService | None,
+    content_id: str,
+    concepts: list[str] | None,
+    *,
+    arch_layer: str | None,
+    pattern_type: str | None,
+) -> AnnotateResult:
+    if enrich is None:
+        raise RuntimeError(_ENRICH_UNAVAILABLE)
+    outcome = enrich.annotate(
+        content_id, concepts or [], arch_layer=arch_layer, pattern_type=pattern_type
+    )
+    return outcome_to_result(outcome)
+
+
 def _require_scip(scip: ScipService | None) -> ScipService:
     if scip is None:
         raise RuntimeError(_SCIP_UNAVAILABLE)
@@ -122,12 +145,36 @@ def reconstruct_prompt(query: str, budget: int = 3) -> str:
     )
 
 
-def build_server(service: ReconstructionService, scip: ScipService | None = None) -> FastMCP:
-    """Build the FastMCP app, registering the graph + SCIP tools and the prompt.
+def enrich_prompt(focus: str = "") -> str:
+    """Protocol text teaching the agent to enrich content it has actually read."""
+    scope = f" Focus on: {focus}." if focus else ""
+    return (
+        f"Enrich the code-memory graph with what you learned; you are the "
+        f"extractor.{scope}\n\n"
+        f"Protocol:\n"
+        f"1. Only annotate content nodes whose bodies you have read via `fetch`.\n"
+        f"2. Call `annotate` with 1-5 concept phrases per node describing what the "
+        f"code is about (e.g. 'rate limiting', 'crash recovery'). Never restate the "
+        f"symbol name — that cue already exists.\n"
+        f"3. Optionally set arch_layer (which architectural layer the code belongs "
+        f"to) and pattern_type (the recurring pattern it embodies).\n"
+        f"4. The result echoes existing tag values: reuse one unless none fits.\n"
+        f"5. Annotations are wiped when their file is re-indexed, so do not "
+        f"annotate code you are about to change."
+    )
+
+
+def build_server(
+    service: ReconstructionService,
+    scip: ScipService | None = None,
+    enrich: EnrichmentService | None = None,
+) -> FastMCP:
+    """Build the FastMCP app, registering the graph + SCIP + annotate tools and prompts.
 
     ``scip`` is optional: when ``None`` (no ``index.scip`` was loaded) the SCIP
     tools are still registered but return an actionable error, so the rest of
-    the server keeps working.
+    the server keeps working. ``enrich`` is optional the same way: when ``None``
+    the ``annotate`` tool is still registered but returns an actionable error.
     """
     mcp = FastMCP("delfos")
 
@@ -168,9 +215,31 @@ def build_server(service: ReconstructionService, scip: ScipService | None = None
         """SCIP type definitions for the content node's symbol."""
         return _type_definition(scip, content_id)
 
+    @mcp.tool()
+    def annotate(  # pyright: ignore[reportUnusedFunction]
+        content_id: str,
+        concepts: list[str] | None = None,
+        arch_layer: str | None = None,
+        pattern_type: str | None = None,
+    ) -> AnnotateResult:
+        """Attach concept cues and semantic tags to a content node you have read.
+
+        Concepts are short phrases describing what the code is about. The result
+        echoes existing arch_layer/pattern_type values — reuse them when they fit.
+        Call with only content_id to just see the current vocabulary.
+        """
+        return _annotate(
+            enrich, content_id, concepts, arch_layer=arch_layer, pattern_type=pattern_type
+        )
+
     @mcp.prompt()
     def reconstruct(query: str, budget: int = 3) -> str:  # pyright: ignore[reportUnusedFunction]
         """Drive a depth-first memory reconstruction over the graph."""
         return reconstruct_prompt(query, budget)
+
+    @mcp.prompt(name="enrich")
+    def enrich_memory(focus: str = "") -> str:  # pyright: ignore[reportUnusedFunction]
+        """Teach the agent to write concept cues and semantic tags for code it read."""
+        return enrich_prompt(focus)
 
     return mcp

@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 from mcp.server.fastmcp import FastMCP
 
+from delfos.enrich import EnrichmentService
 from delfos.mcp.server import (
+    _annotate,  # pyright: ignore[reportPrivateUsage]
     _fetch,  # pyright: ignore[reportPrivateUsage]
     _implementations,  # pyright: ignore[reportPrivateUsage]
     _references,  # pyright: ignore[reportPrivateUsage]
@@ -15,6 +17,7 @@ from delfos.mcp.server import (
     _traverse_reverse,  # pyright: ignore[reportPrivateUsage]
     _type_definition,  # pyright: ignore[reportPrivateUsage]
     build_server,
+    enrich_prompt,
     reconstruct_prompt,
 )
 from delfos.reconstruct import ReconstructionService
@@ -25,6 +28,7 @@ from delfos.store.native_store import NativeGraphStore
 from tests.reconstruct.conftest import (
     EMB_DIM,
     EMB_MODEL,
+    FakeEmbedder,
     edge,
     load,
     make_content,
@@ -161,6 +165,7 @@ def test_build_server_registers_tools_and_prompt(store: NativeGraphStore) -> Non
         "references",
         "implementations",
         "type_definition",
+        "annotate",
     }
     prompt_names = {p.name for p in asyncio.run(server.list_prompts())}
     assert "reconstruct" in prompt_names
@@ -215,3 +220,44 @@ def test_scip_tools_unavailable_when_no_index() -> None:
         _implementations(None, "c1")
     with pytest.raises(RuntimeError, match="SCIP index not available"):
         _type_definition(None, "c1")
+
+
+def test_annotate_tool_writes_and_echoes_vocab(store: NativeGraphStore) -> None:
+    load(store, [make_content("content:1", "save_snapshot")], [])
+    enrich = EnrichmentService(store, FakeEmbedder({"crash recovery": vec(3.0)}))
+
+    result = _annotate(
+        enrich, "content:1", ["crash recovery"], arch_layer="storage", pattern_type=None
+    )
+
+    assert result.content_id == "content:1"
+    assert len(result.written_cue_ids) == 1
+    assert result.written_tag_ids == ["tag:arch_layer:storage"]
+    assert result.existing_values["arch_layer"] == ["storage"]
+
+
+def test_annotate_tool_errors_without_service() -> None:
+    with pytest.raises(RuntimeError, match="enrichment unavailable"):
+        _annotate(None, "content:1", ["x"], arch_layer=None, pattern_type=None)
+
+
+def test_enrich_prompt_teaches_the_annotate_discipline() -> None:
+    text = enrich_prompt()
+    assert "annotate" in text
+    assert "1-5 concept phrases" in text
+    assert "reuse" in text.lower()
+
+    focused = enrich_prompt(focus="the storage layer")
+    assert "the storage layer" in focused
+
+
+def test_build_server_registers_annotate_and_enrich(store: NativeGraphStore) -> None:
+    svc = make_service(store, vec(0.0))
+    enrich = EnrichmentService(store, FakeEmbedder({}))
+
+    server = build_server(svc, None, enrich)
+
+    tools = asyncio.run(server.list_tools())
+    assert "annotate" in [t.name for t in tools]
+    prompts = asyncio.run(server.list_prompts())
+    assert "enrich" in [p.name for p in prompts]

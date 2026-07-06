@@ -23,6 +23,7 @@ from delfos.config import (
     load_dotenv_values,
     resolve_config,
 )
+from delfos.enrich import EnrichmentService
 from delfos.mcp.server import build_server
 from delfos.reconstruct import ReconstructionService
 
@@ -59,8 +60,9 @@ def main(repo_root: str | None = None, *, verbose: bool | None = None) -> None:
     logger.info(
         "[4/5] SCIP service: %s", "ready" if scip is not None else "unavailable (no index.scip)"
     )
+    enrich = EnrichmentService(store, embedder)
     logger.info("[5/5] serving MCP over stdio (Ctrl-C to stop)")
-    build_server(service, scip).run()
+    build_server(service, scip, enrich).run()
 
 
 if __name__ == "__main__":

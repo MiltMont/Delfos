@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from delfos.enrich import AnnotationOutcome
 from delfos.mcp.views import (
     SNIPPET_LIMIT,
+    AnnotateResult,
     ContentDetail,
     NodeSummary,
     content_to_detail,
     content_to_summary,
     cue_to_summary,
+    outcome_to_result,
 )
 from delfos.schema import ContentKind, ContentNode, CueNode, CueType, MemoryLayer
 
@@ -69,3 +72,21 @@ def test_content_detail_omits_embedding_and_carries_provenance() -> None:
     assert detail.source_file == "a.py"
     assert detail.memory_layer == "semantic"
     assert "embedding" not in detail.model_dump()
+
+
+def test_outcome_to_result_maps_all_fields() -> None:
+    outcome = AnnotationOutcome(
+        content_id="content:1",
+        written_cue_ids=["cue:concept:a.py::abc123def456"],
+        written_tag_ids=["tag:arch_layer:storage"],
+        dropped_phrases=["   "],
+        existing_values={"arch_layer": ["storage"], "pattern_type": []},
+    )
+
+    result: AnnotateResult = outcome_to_result(outcome)
+
+    assert result.content_id == "content:1"
+    assert result.written_cue_ids == ["cue:concept:a.py::abc123def456"]
+    assert result.written_tag_ids == ["tag:arch_layer:storage"]
+    assert result.dropped_phrases == ["   "]
+    assert result.existing_values == {"arch_layer": ["storage"], "pattern_type": []}
