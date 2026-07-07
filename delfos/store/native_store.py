@@ -340,6 +340,14 @@ class NativeGraphStore(GraphStore):
         pairs = self._store.vector_search(embedding, k, nt_int)
         return [VectorSearchResult(node_id=nid, score=score) for nid, score in pairs]
 
+    def list_tag_values(self, category: TagCategory) -> list[str]:
+        values: set[str] = set()
+        for nd in self._store.list_nodes_by_type(_NODE_TYPE_TO_NATIVE[NodeType.TAG]):
+            node = _native_to_pydantic(nd)
+            if isinstance(node, TagNode) and node.category == category:
+                values.add(node.value)
+        return sorted(values)
+
     # ── manifest ───────────────────────────────────────────────────────────────
 
     def record_indexed_file(self, file_path: str, git_sha: str, indexed_at: datetime) -> None:

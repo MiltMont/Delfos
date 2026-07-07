@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from delfos.enrich import AnnotationOutcome
 from delfos.schema import ContentNode, CueNode
 from delfos.scip.reader import Occurrence, Relationship
 
@@ -111,3 +112,26 @@ def occurrence_to_reference(relative_path: str, occ: Occurrence) -> ScipReferenc
 def relationship_to_relation(rel: Relationship) -> ScipRelation:
     """Serialize a SCIP relationship target symbol for the MCP surface."""
     return ScipRelation(symbol=rel.symbol)
+
+
+class AnnotateResult(BaseModel):
+    """What ``annotate`` wrote, dropped, and the existing tag vocabulary to reuse."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    content_id: str
+    written_cue_ids: list[str]
+    written_tag_ids: list[str]
+    dropped_phrases: list[str]
+    existing_values: dict[str, list[str]]
+
+
+def outcome_to_result(outcome: AnnotationOutcome) -> AnnotateResult:
+    """Serialize an annotation outcome for the MCP surface."""
+    return AnnotateResult(
+        content_id=outcome.content_id,
+        written_cue_ids=outcome.written_cue_ids,
+        written_tag_ids=outcome.written_tag_ids,
+        dropped_phrases=outcome.dropped_phrases,
+        existing_values=outcome.existing_values,
+    )

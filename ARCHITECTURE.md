@@ -126,6 +126,20 @@ The manifest records which run produced the graph and the SCIP index (so
 inconsistency is detectable) and the embedding model/dimension the index was
 built with (so queries don't need to re-specify them).
 
+## The write path: enrichment
+
+`delfos/enrich/` is the other write path: agent-driven, not index-time.
+`EnrichmentService.annotate` lets the calling agent — the extractor, the
+write-path counterpart to "the calling agent is the planner" — attach
+`CONCEPT` cues and `ARCH_LAYER`/`PATTERN_TYPE` tags to a content node it has
+actually read. Concepts are embedded like any other cue; tag values are open
+vocabulary, normalized, and the call echoes back existing values per category
+(`GraphStore.list_tag_values`, backed by the C++ `Store.list_nodes_by_type`
+binding over `Graph::nodes_by_type`) so agents converge on shared terms rather
+than coining near-synonyms. Everything written carries the target's
+`source_file`/`git_sha`, so the same delete-and-reindex that handles the index
+wipes stale annotations too — no new storage concept required.
+
 ## The read path: reconstruction
 
 `delfos/reconstruct/` is the read-path service, sitting entirely on
@@ -163,6 +177,13 @@ serialized back to the agent. The MCP view models live in `mcp/views.py`,
 deliberately separate from the planner's `CandidateSummary` so the tool surface
 and the planner contract can evolve independently.
 
+The same "calling agent" framing extends to the write path: the `annotate`
+tool wraps `EnrichmentService` so the agent can write `CONCEPT` cues and
+`ARCH_LAYER`/`PATTERN_TYPE` tags for content it has read, taught by the
+`enrich` prompt (see [The write path: enrichment](#the-write-path-enrichment)).
+`annotate` is always registered; called with only `content_id` it's a
+vocabulary query.
+
 ### SCIP cross-references
 
 `delfos/scip/` adds precise code navigation next to the semantic graph: at
@@ -178,9 +199,10 @@ no foreign-key indirection. The MCP server exposes these as three more tools
 - **`delfos/cli/`** — the `delfos` command: `index`, `status`, `doctor`,
   `search`, `reconstruct`, `serve`. Every command anchors on a repo's
   `.delfos/` workspace.
-- **`delfos/mcp/`** — the FastMCP read server (`delfos-mcp` / `delfos serve`).
-  Tool logic lives in plain `_`-prefixed functions so it's unit-testable
-  without an MCP transport; `build_server` registers thin wrappers.
+- **`delfos/mcp/`** — the FastMCP graph server (`delfos-mcp` / `delfos serve`):
+  the read tools plus the `annotate` write tool. Tool logic lives in plain
+  `_`-prefixed functions so it's unit-testable without an MCP transport;
+  `build_server` registers thin wrappers.
 - **`delfos/config.py`** — env-driven startup configuration (`DELFOS_*`
   variables; precedence documented in the README). This is also where the
   embedding-model startup check lives.

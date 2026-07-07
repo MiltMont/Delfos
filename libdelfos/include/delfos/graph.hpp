@@ -94,6 +94,20 @@ public:
         return it->second;
     }
 
+    // Live nodes of one type, in unspecified order. Iterates id_index_ (kept
+    // current through mutation), so it works on dirty graphs — no rebuild()
+    // needed, unlike nodes_view().
+    std::vector<NodeData> nodes_by_type(NodeType type) const {
+        std::vector<NodeData> out;
+        for (const auto& entry : id_index_) {
+            const NodeData& nd = nodes_[entry.second];
+            if (nd.type == type && nd.status == NodeStatus::Active) {
+                out.push_back(nd);
+            }
+        }
+        return out;
+    }
+
     // ── Snapshot access (require dirty_ == false) ──────────────────────────
     // After rebuild(), nodes_ and edges_ contain only live entries with
     // contiguous 0-based indices — safe to iterate for serialisation.

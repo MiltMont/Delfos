@@ -254,6 +254,11 @@ struct Store {
         return result;
     }
 
+    // Live nodes of one type — backs NativeGraphStore.list_tag_values().
+    std::vector<NodeData> list_nodes_by_type(int node_type) {
+        return graph_.nodes_by_type(static_cast<NodeType>(node_type));
+    }
+
     // ── Accessors used by NativeGraphStore for config validation ─────────────
     std::size_t embedding_dim()   const noexcept { return embedding_dim_; }
     std::string embedding_model() const          { return embedding_model_; }
@@ -395,6 +400,7 @@ NB_MODULE(_delfos, m) {
         .def("vector_search",      &Store::vector_search,
              nb::arg("embedding"), nb::arg("k"),
              nb::arg("node_type") = nb::none())
+        .def("list_nodes_by_type", &Store::list_nodes_by_type, nb::arg("node_type"))
         // Manifest
         .def("record_indexed_file",  &Store::record_indexed_file,
              nb::arg("file_path"), nb::arg("git_sha"), nb::arg("indexed_at"))

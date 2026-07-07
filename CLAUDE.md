@@ -43,12 +43,13 @@ Everything goes through `GraphStore` (`delfos/store/base.py`). No component
 
 Python packages: `schema` (Pydantic node/edge models), `store` (`GraphStore`
 ABC + `NativeGraphStore`), `indexer` (parser → extractor → embedder →
-pipeline), `reconstruct` (read-path service + `HopPlanner`), `scip` (SCIP
-generation + cross-reference service), `mcp` (FastMCP server), `cli` (the
-`delfos` command: `index`, `status`, `doctor`, `search`, `reconstruct`,
-`serve`), `workspace.py` (the per-repo `.delfos/` workspace: store snapshot,
-`index.scip`, `manifest.json`, `config.toml`), and `config.py` (`DELFOS_*`
-env-driven startup config).
+pipeline), `reconstruct` (read-path service + `HopPlanner`), `enrich`
+(write-path `EnrichmentService`: agent-supplied concept cues + semantic tags),
+`scip` (SCIP generation + cross-reference service), `mcp` (FastMCP server),
+`cli` (the `delfos` command: `index`, `status`, `doctor`, `search`,
+`reconstruct`, `serve`), `workspace.py` (the per-repo `.delfos/` workspace:
+store snapshot, `index.scip`, `manifest.json`, `config.toml`), and `config.py`
+(`DELFOS_*` env-driven startup config).
 
 ### The graph: Cue → Tag → Content
 
@@ -90,8 +91,13 @@ the planner; no server-side planner LLM runs:
   Embeddings are never serialized back to the agent.
 - **SCIP tools:** `references`, `implementations`, `type_definition` — content
   node IDs double as SCIP symbol strings, so lookup is a direct key access.
-- **Prompt:** `reconstruct` — teaches the depth-first walk discipline
-  (seed → expand → descend one → respect budget → stop).
+- **Write tool:** `annotate` — agent-supplied concept cues and
+  `arch_layer`/`pattern_type` tags, provenance-stamped so a re-index wipes
+  them; always registered; called with only `content_id` it's a vocabulary
+  query.
+- **Prompts:** `reconstruct` — teaches the depth-first walk discipline
+  (seed → expand → descend one → respect budget → stop). `enrich` — teaches
+  the `annotate` write-back discipline.
 
 The internal `reconstruct` engine (`delfos/reconstruct/`, `HopPlanner`) is used
 by the CLI and tests; it is **not** an MCP tool. Indexing runs via the CLI

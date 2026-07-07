@@ -17,7 +17,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from delfos.schema import Direction, Edge, EdgeType, Node, NodeType
+from delfos.schema import Direction, Edge, EdgeType, Node, NodeType, TagCategory
 
 
 class VectorSearchResult(BaseModel):
@@ -158,6 +158,14 @@ class GraphStore(ABC):
 
         ``node_type`` restricts the search (cues are the usual target). The
         query ``embedding`` must come from the store's configured model.
+        """
+
+    @abstractmethod
+    def list_tag_values(self, category: TagCategory) -> list[str]:
+        """Return the sorted distinct values of ACTIVE tag nodes in ``category``.
+
+        Powers the ``annotate`` tool's vocabulary echo: agents are nudged to
+        reuse an existing value instead of coining a near-synonym.
         """
 
     # --- checkpoint manifest ----------------------------------------------

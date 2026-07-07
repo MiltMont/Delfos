@@ -94,6 +94,23 @@ useless to the agent.
 
 ---
 
+## Write path
+
+### Enrichment is agent-driven; the calling agent is the extractor
+
+`CONCEPT` cues and `ARCH_LAYER`/`PATTERN_TYPE` tags are written by the calling
+agent through the MCP `annotate` tool (taught by the `enrich` prompt) — the
+write-path extension of "the calling agent is the planner". Delfos never calls
+a chat LLM at index time and never holds a chat-model API key. Tag values are
+open vocabulary, normalized (lowercase, hyphenated); the tool echoes existing
+values per category so agents converge on a shared vocabulary instead of
+coining near-synonyms. Annotations carry the target content node's
+`source_file`/`git_sha`, so delete-and-reindex wipes them when the file
+changes — a concept extracted from old code may be wrong for the new code, and
+a stale concept cue is worse than a missing one.
+
+---
+
 ## Storage & provenance
 
 ### One boundary: everything goes through `GraphStore`
