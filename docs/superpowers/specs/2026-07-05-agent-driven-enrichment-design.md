@@ -118,6 +118,7 @@ missing one. Agents re-enrich on demand.
 
 - Max 10 concept phrases per call.
 - Max 100 characters per phrase.
+- Max 100 characters per tag value (`arch_layer` / `pattern_type`), checked after normalization.
 - Idempotent: re-annotating produces the same ids; upserts, never duplicates.
 
 The guardrails are a spam brake; the quality discipline lives in the `enrich`

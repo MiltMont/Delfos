@@ -77,6 +77,10 @@ class EnrichmentService:
         Embedding happens before the transaction opens — an embedder failure
         writes nothing. Everything written carries the target's provenance,
         so a re-index of the file wipes it (delete-and-reindex).
+
+        A transaction is opened only when there is something to write: a
+        vocab-only call (no concepts, no tags) never commits, since the C++
+        store rewrites the full snapshot on every commit.
         """
         if len(concepts) > MAX_CONCEPTS_PER_CALL:
             raise EnrichmentError(
@@ -98,49 +102,50 @@ class EnrichmentService:
         indexed_at = datetime.now(tz=UTC)
         cue_ids: list[str] = []
         tag_ids: list[str] = []
-        with self._store.transaction():
-            for phrase, vector in zip(accepted, vectors, strict=True):
-                cue_id = _concept_cue_id(target.source_file, phrase)
-                self._store.upsert_node(
-                    CueNode(
-                        id=cue_id,
-                        source_file=target.source_file,
-                        git_sha=target.git_sha,
-                        indexed_at=indexed_at,
-                        cue_type=CueType.CONCEPT,
-                        text=phrase,
-                        embedding=vector,
-                        embedding_model=self._embedder.model,
-                        embedding_model_version=self._embedder.model_version,
+        if accepted or tags:
+            with self._store.transaction():
+                for phrase, vector in zip(accepted, vectors, strict=True):
+                    cue_id = _concept_cue_id(target.source_file, phrase)
+                    self._store.upsert_node(
+                        CueNode(
+                            id=cue_id,
+                            source_file=target.source_file,
+                            git_sha=target.git_sha,
+                            indexed_at=indexed_at,
+                            cue_type=CueType.CONCEPT,
+                            text=phrase,
+                            embedding=vector,
+                            embedding_model=self._embedder.model,
+                            embedding_model_version=self._embedder.model_version,
+                        )
                     )
-                )
-                self._store.upsert_edge(
-                    Edge(
-                        source_id=cue_id,
-                        target_id=content_id,
-                        edge_type=EdgeType.CUE_OF,
-                        source_file=target.source_file,
-                        git_sha=target.git_sha,
-                        indexed_at=indexed_at,
+                    self._store.upsert_edge(
+                        Edge(
+                            source_id=cue_id,
+                            target_id=content_id,
+                            edge_type=EdgeType.CUE_OF,
+                            source_file=target.source_file,
+                            git_sha=target.git_sha,
+                            indexed_at=indexed_at,
+                        )
                     )
-                )
-                cue_ids.append(cue_id)
-            for category, value in tags:
-                tag_id = f"tag:{category.value}:{value}"
-                self._store.upsert_node(
-                    TagNode(id=tag_id, indexed_at=indexed_at, category=category, value=value)
-                )
-                self._store.upsert_edge(
-                    Edge(
-                        source_id=content_id,
-                        target_id=tag_id,
-                        edge_type=EdgeType.TAGGED_WITH,
-                        source_file=target.source_file,
-                        git_sha=target.git_sha,
-                        indexed_at=indexed_at,
+                    cue_ids.append(cue_id)
+                for category, value in tags:
+                    tag_id = f"tag:{category.value}:{value}"
+                    self._store.upsert_node(
+                        TagNode(id=tag_id, indexed_at=indexed_at, category=category, value=value)
                     )
-                )
-                tag_ids.append(tag_id)
+                    self._store.upsert_edge(
+                        Edge(
+                            source_id=content_id,
+                            target_id=tag_id,
+                            edge_type=EdgeType.TAGGED_WITH,
+                            source_file=target.source_file,
+                            git_sha=target.git_sha,
+                            indexed_at=indexed_at,
+                        )
+                    )
+                    tag_ids.append(tag_id)
 
         return AnnotationOutcome(
             content_id=content_id,
@@ -186,5 +191,9 @@ class EnrichmentService:
             value = _normalize_tag_value(raw)
             if not value:
                 raise EnrichmentError(f"empty tag value for {category.value}")
+            if len(value) > MAX_PHRASE_LENGTH:
+                raise EnrichmentError(
+                    f"tag value for {category.value} exceeds {MAX_PHRASE_LENGTH} characters"
+                )
             out.append((category, value))
         return out

@@ -1,4 +1,4 @@
-"""FastMCP read server: graph + annotate tools, a reconstruct and enrich prompt.
+"""FastMCP graph server: graph + annotate tools, a reconstruct and enrich prompt.
 
 Tool logic lives in plain ``_``-prefixed functions so it is unit-testable
 without an MCP transport; :func:`build_server` registers thin wrappers. The

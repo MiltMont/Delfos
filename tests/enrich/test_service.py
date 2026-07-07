@@ -2,17 +2,29 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 import pytest
 
 from delfos.enrich import AnnotationOutcome, EnrichmentError, EnrichmentService
 from delfos.enrich.service import (
+    MAX_PHRASE_LENGTH,
     _concept_cue_id,  # pyright: ignore[reportPrivateUsage]
     _normalize_phrase,  # pyright: ignore[reportPrivateUsage]
     _normalize_tag_value,  # pyright: ignore[reportPrivateUsage]
 )
 from delfos.schema import CueNode, CueType, Direction, EdgeType
 from delfos.store.native_store import NativeGraphStore
-from tests.reconstruct.conftest import FakeEmbedder, load, make_content, make_cue, vec
+from tests.reconstruct.conftest import (
+    EMB_DIM,
+    EMB_MODEL,
+    FakeEmbedder,
+    load,
+    make_content,
+    make_cue,
+    vec,
+)
 
 
 def test_normalize_phrase_lowercases_and_collapses_whitespace() -> None:
@@ -90,6 +102,17 @@ def test_annotate_is_idempotent(store: NativeGraphStore) -> None:
     assert first.written_cue_ids == second.written_cue_ids
     assert first.written_tag_ids == second.written_tag_ids
 
+    # Re-annotating must upsert, not duplicate: edge counts stay put.
+    cue_neighbors = store.neighbors(
+        first.written_cue_ids[0], edge_type=EdgeType.CUE_OF, direction=Direction.OUTGOING
+    )
+    assert len(cue_neighbors) == 1
+
+    tags = store.neighbors(
+        "content:1", edge_type=EdgeType.TAGGED_WITH, direction=Direction.OUTGOING
+    )
+    assert [t.id for t in tags].count("tag:arch_layer:storage") == 1
+
 
 def test_annotate_drops_bad_phrases_but_keeps_good_ones(store: NativeGraphStore) -> None:
     load(store, [make_content("content:1", "save_snapshot")], [])
@@ -128,6 +151,15 @@ def test_annotate_rejects_empty_tag_value(store: NativeGraphStore) -> None:
 
     with pytest.raises(EnrichmentError, match="empty tag value"):
         svc.annotate("content:1", arch_layer="   ")
+
+
+def test_annotate_rejects_overlong_tag_value(store: NativeGraphStore) -> None:
+    load(store, [make_content("content:1", "f")], [])
+    svc = _service(store, {})
+    overlong = "x " * ((MAX_PHRASE_LENGTH // 2) + 1)  # normalizes to > MAX_PHRASE_LENGTH chars
+
+    with pytest.raises(EnrichmentError, match="exceeds"):
+        svc.annotate("content:1", arch_layer=overlong)
 
 
 def test_annotate_with_only_content_id_is_a_vocab_query(store: NativeGraphStore) -> None:
@@ -169,3 +201,35 @@ def test_annotate_writes_nothing_when_embedder_fails(store: NativeGraphStore) ->
         svc.annotate("content:1", ["crash recovery"], arch_layer="storage")
 
     assert store.neighbors("content:1", edge_type=EdgeType.TAGGED_WITH) == []
+
+
+def _snapshot_digest(graph_dir: Path) -> str:
+    return hashlib.sha256((graph_dir / "graph.fb").read_bytes()).hexdigest()
+
+
+def test_annotate_vocab_only_call_does_not_write_snapshot(tmp_path: Path) -> None:
+    """A no-write ``annotate`` (empty result / vocab query) must not commit.
+
+    ``commit()`` rewrites the full snapshot to disk regardless of whether
+    anything actually changed, so opening a transaction for a vocab-only call
+    would turn a cheap read into an expensive write.
+    """
+    graph_dir = tmp_path / "graph"
+    native_store = NativeGraphStore(graph_dir, embedding_dim=EMB_DIM, embedding_model=EMB_MODEL)
+    native_store.initialize()
+    try:
+        load(native_store, [make_content("content:1", "f")], [])
+        snapshot = graph_dir / "graph.fb"
+        assert snapshot.exists()
+        digest_before = _snapshot_digest(graph_dir)
+        mtime_before = snapshot.stat().st_mtime_ns
+
+        svc = _service(native_store, {})
+        outcome = svc.annotate("content:1")
+
+        assert outcome.written_cue_ids == []
+        assert outcome.written_tag_ids == []
+        assert snapshot.stat().st_mtime_ns == mtime_before
+        assert _snapshot_digest(graph_dir) == digest_before
+    finally:
+        native_store.close()
